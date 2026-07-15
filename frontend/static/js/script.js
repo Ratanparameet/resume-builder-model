@@ -650,16 +650,37 @@ function parseResumeText(text) {
   });
 
   // Group experience lines into titles and bullet details
-  const expTitles = [];
+  const expCompanies = [];
   const expDetails = [];
 
   sections.experience.forEach(line => {
     const isBullet = /^[•\-\s\*]/.test(line) || /^(built|developed|managed|utilized|contributed|gained|assisted|implemented|created|designed|worked|responsible|handled|led)\b/i.test(line);
     
     if (!isBullet && (line.includes("-") || line.includes(":") || line.includes("|") || /\b(intern|developer|engineer|designer|manager|executive|analyst|associate|services|llp|infoware|co|ltd|inc|solutions)\b/i.test(line)) && line.length < 100) {
-      const cleanTitle = line.replace(/[:\s]+$/, "").replace(/^[•\-\s\*]+/, "").trim();
-      if (cleanTitle.length > 0) {
-        expTitles.push(cleanTitle);
+      const cleanLine = line.replace(/[:\s]+$/, "").replace(/^[•\-\s\*]+/, "").trim();
+      if (cleanLine.length > 0) {
+        // Extract ONLY company name
+        let companyName = cleanLine;
+        let parts = [];
+        if (cleanLine.includes(" - ")) {
+          parts = cleanLine.split(" - ");
+        } else if (cleanLine.includes(" at ")) {
+          parts = cleanLine.split(" at ");
+        } else if (cleanLine.includes(" @ ")) {
+          parts = cleanLine.split(" @ ");
+        } else if (cleanLine.includes(" – ")) {
+          parts = cleanLine.split(" – ");
+        } else if (cleanLine.includes(" — ")) {
+          parts = cleanLine.split(" — ");
+        }
+        
+        if (parts.length >= 2) {
+          companyName = parts[parts.length - 1].trim();
+        }
+        
+        if (companyName.length > 0 && !expCompanies.includes(companyName)) {
+          expCompanies.push(companyName);
+        }
       }
     } else {
       expDetails.push(line);
@@ -667,12 +688,25 @@ function parseResumeText(text) {
   });
 
   let experienceText = "";
-  if (expTitles.length > 0) {
-    experienceText = expTitles.join("; ");
+  if (expCompanies.length > 0) {
+    experienceText = expCompanies.join("; ");
   } else {
-    // Fallback: search for first non-bullet line
+    // Fallback: search for first non-bullet line and try to extract company name from it
     const firstLine = sections.experience.find(l => !/^[•\-\s\*]/.test(l));
-    experienceText = firstLine || (sections.experience[0] || "Fresher");
+    if (firstLine) {
+      let companyName = firstLine.replace(/[:\s]+$/, "").replace(/^[•\-\s\*]+/, "").trim();
+      let parts = [];
+      if (companyName.includes(" - ")) parts = companyName.split(" - ");
+      else if (companyName.includes(" at ")) parts = companyName.split(" at ");
+      else if (companyName.includes(" @ ")) parts = companyName.split(" @ ");
+      
+      if (parts.length >= 2) {
+        companyName = parts[parts.length - 1].trim();
+      }
+      experienceText = companyName;
+    } else {
+      experienceText = sections.experience[0] || "Fresher";
+    }
   }
 
   // Skills dictionary mapping to enrich matching
