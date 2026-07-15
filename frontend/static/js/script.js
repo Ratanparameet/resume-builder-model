@@ -502,8 +502,43 @@ async function handleUploadedFile(file) {
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const textContent = await page.getTextContent();
-          const pageText = textContent.items.map(item => item.str).join(" ");
-          fullText += pageText + "\n";
+          
+          // Reconstruct lines using item transform positioning
+          const items = textContent.items;
+          const tolerance = 4; // pixels for same visual line
+          const linesMap = {};
+          
+          items.forEach(item => {
+            const y = item.transform[5];
+            const x = item.transform[4];
+            
+            let foundY = null;
+            for (const key of Object.keys(linesMap)) {
+              if (Math.abs(parseFloat(key) - y) < tolerance) {
+                foundY = key;
+                break;
+              }
+            }
+            
+            if (foundY !== null) {
+              linesMap[foundY].push({ x, text: item.str });
+            } else {
+              linesMap[y] = [{ x, text: item.str }];
+            }
+          });
+          
+          // Sort lines from top to bottom
+          const sortedYKeys = Object.keys(linesMap).sort((a, b) => parseFloat(b) - parseFloat(a));
+          
+          sortedYKeys.forEach(yKey => {
+            // Sort items on the same line from left to right
+            const lineItems = linesMap[yKey].sort((a, b) => a.x - b.x);
+            const lineStr = lineItems.map(item => item.text).join(" ").trim();
+            if (lineStr.length > 0) {
+              fullText += lineStr + "\n";
+            }
+          });
+          fullText += "\n";
         }
         
         processExtractedText(fullText);
@@ -555,27 +590,29 @@ function resetUploadZone() {
 function parseResumeText(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   
-  // 1. Extract Candidate Name (heuristics: look at first 5 lines)
+  // 1. Extract Candidate Name (heuristics: look at first 8 lines)
   let candidateName = "";
-  for (let i = 0; i < Math.min(5, lines.length); i++) {
+  for (let i = 0; i < Math.min(8, lines.length); i++) {
     const line = lines[i];
-    // Ignore lines that look like contact info, links, or sections
-    if (line.includes('@') || line.includes('/') || line.includes('+') || /\b(resume|cv|portfolio|email|phone|address|education|skills|experience)\b/i.test(line)) {
+    if (line.includes('@') || line.includes('/') || line.includes('+') || /\b(resume|cv|portfolio|email|phone|mobile|address|gmail|linkedin|github)\b/i.test(line)) {
       continue;
     }
-    // Check if it looks like a name (capitalized words)
-    if (/^[A-Z][a-zA-Z\s\.]{2,30}$/.test(line)) {
-      candidateName = line;
+    const words = line.split(/\s+/);
+    if (words.length >= 2 && words.length <= 4 && /^[a-zA-Z\s\.\,\-\|]+$/.test(line)) {
+      candidateName = line.replace(/^(name|candidate name|curriculum vitae|resume)\s*:\s*/i, '').trim();
       break;
     }
   }
   if (!candidateName && lines.length > 0) {
-    candidateName = lines[0]; // fallback to first line
+    candidateName = lines[0];
   }
 
-  // 2. Extract Sections by identifying keywords
-  // We can group lines under common section titles
-  let currentSection = "general";
+  // Clean candidateName if it grabbed education suffixes
+  if (candidateName.includes("B.E.") || candidateName.includes("B.Tech") || candidateName.includes("BCA") || candidateName.includes("M.E.") || candidateName.includes("M.Tech")) {
+    candidateName = candidateName.split(/\b(B\.?E\.?|B\.?Tech|BCA|MBA|MCA|M\.?E\.?|M\.?Tech)\b/i)[0].trim().replace(/[\-\,\|\s]+$/, "");
+  }
+
+  // 2. Classify text blocks into sections based on headers
   const sections = {
     education: [],
     experience: [],
@@ -584,35 +621,35 @@ function parseResumeText(text) {
     certificates: []
   };
 
-  const sectionKeywords = {
-    education: /\b(education|academic|qualification|studies|university|college|degree)\b/i,
-    experience: /\b(experience|employment|work|history|career|job|internship|intern)\b/i,
-    skills: /\b(skills|technical skills|technologies|proficiencies|tools|languages)\b/i,
-    projects: /\b(projects|key projects|academic projects|personal projects|development projects)\b/i,
-    certificates: /\b(certifications|certificates|courses|credentials|achievements|training)\b/i
+  const sectionHeaders = {
+    education: /^(education|academic|educational|qualification|academics|studies|university|college)/i,
+    experience: /^(experience|work experience|employment|professional experience|internship|internships|work history)/i,
+    skills: /^(skills|technical skills|key skills|technologies|proficiencies|tools|languages|core competencies)/i,
+    projects: /^(projects|key projects|academic projects|personal projects|development projects)/i,
+    certificates: /^(certifications|certificates|courses|credentials|achievements|training)/i
   };
 
+  let activeSection = null;
+
   lines.forEach(line => {
-    // Check if line matches a new section header
-    let matchedNewSection = false;
-    for (const [secName, regex] of Object.entries(sectionKeywords)) {
-      // Typically section headers are short lines
-      if (line.length < 35 && regex.test(line)) {
-        currentSection = secName;
-        matchedNewSection = true;
-        break;
+    let foundHeader = false;
+    if (line.length < 40) {
+      const cleanLine = line.replace(/^[•\-\s\*\[\]\(\)\d\.\:\#]+/, '').trim();
+      for (const [secName, regex] of Object.entries(sectionHeaders)) {
+        if (regex.test(cleanLine)) {
+          activeSection = secName;
+          foundHeader = true;
+          break;
+        }
       }
     }
 
-    if (!matchedNewSection) {
-      if (currentSection !== "general") {
-        sections[currentSection].push(line);
-      }
+    if (!foundHeader && activeSection) {
+      sections[activeSection].push(line);
     }
   });
 
-  // If a section is empty, let's fall back to scans or heuristics
-  // Let's also build a wide dictionary scan for skills to ensure they are parsed accurately even if the document has custom formatting
+  // Skills dictionary mapping to enrich matching
   const dictionarySkills = [
     "python", "sql", "power bi", "tableau", "excel", "pandas", "numpy", "statistics", "data analysis", "r",
     "html", "css", "javascript", "react", "node.js", "git", "flask", "django", "seo", "sem", "social media",
@@ -623,24 +660,21 @@ function parseResumeText(text) {
   ];
 
   let skillsList = [];
-  // Scan the entire text for skills in our dictionary
   const lowerText = text.toLowerCase();
   dictionarySkills.forEach(skill => {
     const escaped = skill.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
     const regex = new RegExp(`\\b${escaped}\\b`, 'i');
     if (regex.test(lowerText)) {
-      // capitalize nicely
-      const matchedSkill = skill.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-      skillsList.push(formattedSkill(matchedSkill));
+      const formatted = skill.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      skillsList.push(formattedSkill(formatted));
     }
   });
 
-  // If we found skills in the dedicated section, merge/use them
   if (sections.skills.length > 0) {
-    const sectionSkillsText = sections.skills.join(', ');
-    // Extract comma-separated words or bullet points
-    const customSkills = sectionSkillsText.split(/[,;\n•|]/).map(s => s.trim()).filter(s => s.length > 1 && s.length < 25);
+    const skillsText = sections.skills.join(", ");
+    const customSkills = skillsText.split(/[,;\n•|/\\]/).map(s => s.trim()).filter(s => s.length > 1 && s.length < 30);
     customSkills.forEach(cs => {
+      if (/^(and|with|using|in|for|the|or)$/i.test(cs)) return;
       const formatted = cs.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
       if (!skillsList.includes(formatted)) {
         skillsList.push(formatted);
@@ -648,28 +682,40 @@ function parseResumeText(text) {
     });
   }
 
-  // Format parsed components
+  // Format final fields
   const parsedData = {
     name: candidateName.trim(),
-    education: sections.education.slice(0, 4).join(" ").trim(),
-    experience: sections.experience.slice(0, 4).join(" ").trim() || "Fresher",
-    skills: skillsList.slice(0, 15).join(", "),
-    projects: sections.projects.slice(0, 5).join(" ").trim(),
-    certificates: sections.certificates.slice(0, 4).join(", ").trim()
+    education: sections.education.slice(0, 5).join(" ").trim(),
+    experience: sections.experience.slice(0, 6).join(" ").trim() || "Fresher",
+    skills: skillsList.slice(0, 20).join(", "),
+    projects: sections.projects.slice(0, 8).join(" ").trim(),
+    certificates: sections.certificates.slice(0, 5).join(", ").trim()
   };
 
-  // Fallback checks if any main section is empty:
+  // Clean list styles
+  const cleanListSymbols = (txt) => {
+    return txt
+      .replace(/^[•\-\s\*]+/gm, '')
+      .replace(/\s*[•\-\*]\s*/g, '; ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  parsedData.education = cleanListSymbols(parsedData.education);
+  parsedData.experience = cleanListSymbols(parsedData.experience);
+  parsedData.projects = cleanListSymbols(parsedData.projects);
+  parsedData.certificates = cleanListSymbols(parsedData.certificates);
+
+  // Fallbacks in case PDF has non-standard header formats:
   if (!parsedData.education) {
-    // Search the text for lines mentioning degree or B.Tech/MBA etc
-    const eduMatches = lines.filter(l => /\b(b\.?tech|b\.?e|bca|mca|mba|degree|bachelor|master|university|college|school)\b/i.test(l));
-    parsedData.education = eduMatches.slice(0, 2).join(" ");
+    const eduLines = lines.filter(l => /\b(b\.?tech|b\.?e|bca|mca|mba|degree|bachelor|master|university|college|school)\b/i.test(l));
+    parsedData.education = cleanListSymbols(eduLines.slice(0, 3).join("; "));
   }
 
   if (!parsedData.experience || parsedData.experience === "Fresher") {
-    // Search for lines mentioning work experience or months/years
-    const expMatches = lines.filter(l => /\b(internship|months|years|worked|experience|position|role|fresher)\b/i.test(l));
-    if (expMatches.length > 0) {
-      parsedData.experience = expMatches.slice(0, 2).join(" ");
+    const expLines = lines.filter(l => /\b(internship|months|years|experience|intern|worked|position|role|fresher)\b/i.test(l));
+    if (expLines.length > 0) {
+      parsedData.experience = cleanListSymbols(expLines.slice(0, 3).join("; "));
     }
   }
 
@@ -677,7 +723,6 @@ function parseResumeText(text) {
 }
 
 function formattedSkill(skillName) {
-  // Normalize custom names
   if (skillName.toLowerCase() === "sql") return "SQL";
   if (skillName.toLowerCase() === "seo") return "SEO";
   if (skillName.toLowerCase() === "sem") return "SEM";
