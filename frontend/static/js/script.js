@@ -425,3 +425,264 @@ window.loadMockCandidate = function(candidateKey) {
     form.dispatchEvent(new Event('submit'));
   }, 100);
 };
+
+// ---------------------------------------------------------------------------
+// Resume File Upload & Parsing (PDF / TXT)
+// ---------------------------------------------------------------------------
+const uploadZone = document.getElementById("upload-zone");
+const fileInput = document.getElementById("resume-file-input");
+
+// Trigger file input click when upload zone is clicked
+uploadZone.addEventListener("click", () => {
+  fileInput.click();
+});
+
+// Handle Drag over / leave effects
+uploadZone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  uploadZone.classList.add("dragover");
+});
+
+uploadZone.addEventListener("dragleave", () => {
+  uploadZone.classList.remove("dragover");
+});
+
+uploadZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  uploadZone.classList.remove("dragover");
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    handleUploadedFile(files[0]);
+  }
+});
+
+fileInput.addEventListener("change", (e) => {
+  const files = e.target.files;
+  if (files.length > 0) {
+    handleUploadedFile(files[0]);
+  }
+});
+
+async function handleUploadedFile(file) {
+  const fileExt = file.name.split('.').pop().toLowerCase();
+  
+  if (fileExt !== 'pdf' && fileExt !== 'txt') {
+    alert("Please upload a valid PDF or TXT file.");
+    return;
+  }
+
+  // Visual state change
+  uploadZone.classList.add("parsing");
+  const pTag = uploadZone.querySelector("p");
+  const icon = uploadZone.querySelector("i");
+  pTag.innerHTML = `Extracting data from <strong style="color:var(--accent-gold);">${file.name}</strong>...`;
+  icon.setAttribute("data-lucide", "loader-2");
+  icon.classList.add("animate-spin");
+  lucide.createIcons();
+
+  const reader = new FileReader();
+
+  if (fileExt === 'txt') {
+    reader.onload = function(e) {
+      const text = e.target.result;
+      processExtractedText(text);
+    };
+    reader.readAsText(file);
+  } else if (fileExt === 'pdf') {
+    // Configure PDF.js worker Src
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    
+    reader.onload = async function(e) {
+      const typedarray = new Uint8Array(e.target.result);
+      try {
+        // PDF.js parse
+        const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
+        let fullText = "";
+        
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map(item => item.str).join(" ");
+          fullText += pageText + "\n";
+        }
+        
+        processExtractedText(fullText);
+      } catch (err) {
+        console.error("PDF extraction failed", err);
+        alert("Failed to parse PDF file. Please ensure it is a text-based PDF (not scanned/image-based) or try a TXT file.");
+        resetUploadZone();
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+function processExtractedText(text) {
+  if (!text || text.trim().length === 0) {
+    alert("No text content could be extracted from the resume.");
+    resetUploadZone();
+    return;
+  }
+
+  const parsed = parseResumeText(text);
+  
+  // Fill form columns
+  document.getElementById("candidate-name").value = parsed.name || "";
+  document.getElementById("education").value = parsed.education || "";
+  document.getElementById("experience").value = parsed.experience || "";
+  document.getElementById("skills").value = parsed.skills || "";
+  document.getElementById("projects").value = parsed.projects || "";
+  document.getElementById("certificates").value = parsed.certificates || "";
+  
+  // Trigger form submit to run match analysis immediately
+  setTimeout(() => {
+    resetUploadZone();
+    form.dispatchEvent(new Event('submit'));
+  }, 800);
+}
+
+function resetUploadZone() {
+  uploadZone.classList.remove("parsing");
+  const pTag = uploadZone.querySelector("p");
+  const icon = uploadZone.querySelector("i");
+  pTag.innerHTML = `Drag & drop candidate resume (PDF or TXT) or <span class="browse-link">browse</span>`;
+  icon.setAttribute("data-lucide", "upload-cloud");
+  icon.classList.remove("animate-spin");
+  fileInput.value = ""; // clear input
+  lucide.createIcons();
+}
+
+function parseResumeText(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  
+  // 1. Extract Candidate Name (heuristics: look at first 5 lines)
+  let candidateName = "";
+  for (let i = 0; i < Math.min(5, lines.length); i++) {
+    const line = lines[i];
+    // Ignore lines that look like contact info, links, or sections
+    if (line.includes('@') || line.includes('/') || line.includes('+') || /\b(resume|cv|portfolio|email|phone|address|education|skills|experience)\b/i.test(line)) {
+      continue;
+    }
+    // Check if it looks like a name (capitalized words)
+    if (/^[A-Z][a-zA-Z\s\.]{2,30}$/.test(line)) {
+      candidateName = line;
+      break;
+    }
+  }
+  if (!candidateName && lines.length > 0) {
+    candidateName = lines[0]; // fallback to first line
+  }
+
+  // 2. Extract Sections by identifying keywords
+  // We can group lines under common section titles
+  let currentSection = "general";
+  const sections = {
+    education: [],
+    experience: [],
+    skills: [],
+    projects: [],
+    certificates: []
+  };
+
+  const sectionKeywords = {
+    education: /\b(education|academic|qualification|studies|university|college|degree)\b/i,
+    experience: /\b(experience|employment|work|history|career|job|internship|intern)\b/i,
+    skills: /\b(skills|technical skills|technologies|proficiencies|tools|languages)\b/i,
+    projects: /\b(projects|key projects|academic projects|personal projects|development projects)\b/i,
+    certificates: /\b(certifications|certificates|courses|credentials|achievements|training)\b/i
+  };
+
+  lines.forEach(line => {
+    // Check if line matches a new section header
+    let matchedNewSection = false;
+    for (const [secName, regex] of Object.entries(sectionKeywords)) {
+      // Typically section headers are short lines
+      if (line.length < 35 && regex.test(line)) {
+        currentSection = secName;
+        matchedNewSection = true;
+        break;
+      }
+    }
+
+    if (!matchedNewSection) {
+      if (currentSection !== "general") {
+        sections[currentSection].push(line);
+      }
+    }
+  });
+
+  // If a section is empty, let's fall back to scans or heuristics
+  // Let's also build a wide dictionary scan for skills to ensure they are parsed accurately even if the document has custom formatting
+  const dictionarySkills = [
+    "python", "sql", "power bi", "tableau", "excel", "pandas", "numpy", "statistics", "data analysis", "r",
+    "html", "css", "javascript", "react", "node.js", "git", "flask", "django", "seo", "sem", "social media",
+    "google analytics", "content writing", "canva", "meta ads", "email marketing", "figma", "photoshop",
+    "illustrator", "ui/ux", "typography", "premiere pro", "after effects", "recruiting", "communication",
+    "ms office", "management", "scheduling", "operations", "hris", "java", "c++", "c#", "aws", "docker",
+    "kubernetes", "linux", "cloud", "machine learning", "deep learning", "nlp"
+  ];
+
+  let skillsList = [];
+  // Scan the entire text for skills in our dictionary
+  const lowerText = text.toLowerCase();
+  dictionarySkills.forEach(skill => {
+    const escaped = skill.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+    if (regex.test(lowerText)) {
+      // capitalize nicely
+      const matchedSkill = skill.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      skillsList.push(formattedSkill(matchedSkill));
+    }
+  });
+
+  // If we found skills in the dedicated section, merge/use them
+  if (sections.skills.length > 0) {
+    const sectionSkillsText = sections.skills.join(', ');
+    // Extract comma-separated words or bullet points
+    const customSkills = sectionSkillsText.split(/[,;\n•|]/).map(s => s.trim()).filter(s => s.length > 1 && s.length < 25);
+    customSkills.forEach(cs => {
+      const formatted = cs.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      if (!skillsList.includes(formatted)) {
+        skillsList.push(formatted);
+      }
+    });
+  }
+
+  // Format parsed components
+  const parsedData = {
+    name: candidateName.trim(),
+    education: sections.education.slice(0, 4).join(" ").trim(),
+    experience: sections.experience.slice(0, 4).join(" ").trim() || "Fresher",
+    skills: skillsList.slice(0, 15).join(", "),
+    projects: sections.projects.slice(0, 5).join(" ").trim(),
+    certificates: sections.certificates.slice(0, 4).join(", ").trim()
+  };
+
+  // Fallback checks if any main section is empty:
+  if (!parsedData.education) {
+    // Search the text for lines mentioning degree or B.Tech/MBA etc
+    const eduMatches = lines.filter(l => /\b(b\.?tech|b\.?e|bca|mca|mba|degree|bachelor|master|university|college|school)\b/i.test(l));
+    parsedData.education = eduMatches.slice(0, 2).join(" ");
+  }
+
+  if (!parsedData.experience || parsedData.experience === "Fresher") {
+    // Search for lines mentioning work experience or months/years
+    const expMatches = lines.filter(l => /\b(internship|months|years|worked|experience|position|role|fresher)\b/i.test(l));
+    if (expMatches.length > 0) {
+      parsedData.experience = expMatches.slice(0, 2).join(" ");
+    }
+  }
+
+  return parsedData;
+}
+
+function formattedSkill(skillName) {
+  // Normalize custom names
+  if (skillName.toLowerCase() === "sql") return "SQL";
+  if (skillName.toLowerCase() === "seo") return "SEO";
+  if (skillName.toLowerCase() === "sem") return "SEM";
+  if (skillName.toLowerCase() === "hris") return "HRIS";
+  if (skillName.toLowerCase() === "nlp") return "NLP";
+  return skillName;
+}
+

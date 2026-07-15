@@ -308,6 +308,62 @@ body {
   padding: 2rem;
 }
 
+/* Resume Upload Zone */
+.resume-upload-zone {
+  border: 2px dashed #cbd5e1;
+  border-radius: var(--radius-md);
+  padding: 2rem;
+  text-align: center;
+  background-color: #f8fafc;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  margin-bottom: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.resume-upload-zone:hover, .resume-upload-zone.dragover {
+  border-color: var(--primary);
+  background-color: var(--primary-glow);
+}
+
+.resume-upload-zone.parsing {
+  border-color: var(--accent-gold);
+  background-color: rgba(245, 158, 11, 0.05);
+  cursor: wait;
+}
+
+.resume-upload-zone .upload-icon {
+  width: 42px;
+  height: 42px;
+  color: #94a3b8;
+  transition: all 0.25s ease;
+}
+
+.resume-upload-zone:hover .upload-icon, .resume-upload-zone.dragover .upload-icon {
+  color: var(--primary);
+  transform: translateY(-2px);
+}
+
+.resume-upload-zone p {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.resume-upload-zone .browse-link {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.resume-upload-zone .file-limits {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
 .form-row.split {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1079,3 +1135,18 @@ body {
     align-items: flex-start;
   }
 }
+
+/* Animation helper for loader spin */
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+

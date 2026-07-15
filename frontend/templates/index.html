@@ -9,6 +9,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- PDF.js library for client-side PDF parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
@@ -67,6 +69,14 @@
           </div>
           
           <form id="resume-form" class="matching-form">
+            <!-- Resume File Upload Zone -->
+            <div class="resume-upload-zone" id="upload-zone">
+              <i data-lucide="upload-cloud" class="upload-icon"></i>
+              <p>Drag & drop candidate resume (PDF or TXT) or <span class="browse-link">browse</span></p>
+              <span class="file-limits">Supports PDF, TXT (Max 5MB)</span>
+              <input type="file" id="resume-file-input" accept=".pdf,.txt" style="display: none;">
+            </div>
+
             <div class="form-row split">
               <div class="field">
                 <label for="candidate-name">Candidate Name</label>
