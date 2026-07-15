@@ -649,6 +649,32 @@ function parseResumeText(text) {
     }
   });
 
+  // Group experience lines into titles and bullet details
+  const expTitles = [];
+  const expDetails = [];
+
+  sections.experience.forEach(line => {
+    const isBullet = /^[•\-\s\*]/.test(line) || /^(built|developed|managed|utilized|contributed|gained|assisted|implemented|created|designed|worked|responsible|handled|led)\b/i.test(line);
+    
+    if (!isBullet && (line.includes("-") || line.includes(":") || line.includes("|") || /\b(intern|developer|engineer|designer|manager|executive|analyst|associate|services|llp|infoware|co|ltd|inc|solutions)\b/i.test(line)) && line.length < 100) {
+      const cleanTitle = line.replace(/[:\s]+$/, "").replace(/^[•\-\s\*]+/, "").trim();
+      if (cleanTitle.length > 0) {
+        expTitles.push(cleanTitle);
+      }
+    } else {
+      expDetails.push(line);
+    }
+  });
+
+  let experienceText = "";
+  if (expTitles.length > 0) {
+    experienceText = expTitles.join("; ");
+  } else {
+    // Fallback: search for first non-bullet line
+    const firstLine = sections.experience.find(l => !/^[•\-\s\*]/.test(l));
+    experienceText = firstLine || (sections.experience[0] || "Fresher");
+  }
+
   // Skills dictionary mapping to enrich matching
   const dictionarySkills = [
     "python", "sql", "power bi", "tableau", "excel", "pandas", "numpy", "statistics", "data analysis", "r",
@@ -656,7 +682,8 @@ function parseResumeText(text) {
     "google analytics", "content writing", "canva", "meta ads", "email marketing", "figma", "photoshop",
     "illustrator", "ui/ux", "typography", "premiere pro", "after effects", "recruiting", "communication",
     "ms office", "management", "scheduling", "operations", "hris", "java", "c++", "c#", "aws", "docker",
-    "kubernetes", "linux", "cloud", "machine learning", "deep learning", "nlp"
+    "kubernetes", "linux", "cloud", "machine learning", "deep learning", "nlp", "rest api", "rest apis",
+    "backend", "frontend", "database", "databases", "django admin", "web development", "responsive web"
   ];
 
   let skillsList = [];
@@ -670,14 +697,31 @@ function parseResumeText(text) {
     }
   });
 
+  // Specifically extract explicit terms mentioned in the work experience details
+  if (expDetails.length > 0) {
+    const expDetailsText = expDetails.join(" ").toLowerCase();
+    dictionarySkills.forEach(skill => {
+      const escaped = skill.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+      if (regex.test(expDetailsText)) {
+        const formatted = skill.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        const resolved = formattedSkill(formatted);
+        if (!skillsList.includes(resolved)) {
+          skillsList.push(resolved);
+        }
+      }
+    });
+  }
+
   if (sections.skills.length > 0) {
     const skillsText = sections.skills.join(", ");
     const customSkills = skillsText.split(/[,;\n•|/\\]/).map(s => s.trim()).filter(s => s.length > 1 && s.length < 30);
     customSkills.forEach(cs => {
       if (/^(and|with|using|in|for|the|or)$/i.test(cs)) return;
       const formatted = cs.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-      if (!skillsList.includes(formatted)) {
-        skillsList.push(formatted);
+      const resolved = formattedSkill(formatted);
+      if (!skillsList.includes(resolved)) {
+        skillsList.push(resolved);
       }
     });
   }
@@ -686,7 +730,7 @@ function parseResumeText(text) {
   const parsedData = {
     name: candidateName.trim(),
     education: sections.education.slice(0, 5).join(" ").trim(),
-    experience: sections.experience.slice(0, 6).join(" ").trim() || "Fresher",
+    experience: experienceText,
     skills: skillsList.slice(0, 20).join(", "),
     projects: sections.projects.slice(0, 8).join(" ").trim(),
     certificates: sections.certificates.slice(0, 5).join(", ").trim()
@@ -723,11 +767,16 @@ function parseResumeText(text) {
 }
 
 function formattedSkill(skillName) {
-  if (skillName.toLowerCase() === "sql") return "SQL";
-  if (skillName.toLowerCase() === "seo") return "SEO";
-  if (skillName.toLowerCase() === "sem") return "SEM";
-  if (skillName.toLowerCase() === "hris") return "HRIS";
-  if (skillName.toLowerCase() === "nlp") return "NLP";
+  const s = skillName.toLowerCase().trim();
+  if (s === "sql") return "SQL";
+  if (s === "seo") return "SEO";
+  if (s === "sem") return "SEM";
+  if (s === "hris") return "HRIS";
+  if (s === "nlp") return "NLP";
+  if (s === "rest api" || s === "rest apis") return "REST APIs";
+  if (s === "django admin") return "Django Admin";
+  if (s === "responsive web" || s === "responsive web interfaces") return "Responsive Web Design";
+  if (s === "web development" || s === "web application development") return "Web Development";
   return skillName;
 }
 
