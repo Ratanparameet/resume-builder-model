@@ -502,10 +502,12 @@ async function handleUploadedFiles(files) {
   // Show visual processing state
   uploadZone.classList.add("parsing");
   const pTag = uploadZone.querySelector("p");
-  const icon = uploadZone.querySelector(".upload-icon");
+  const icon = uploadZone.querySelector(".upload-icon") || uploadZone.querySelector("svg") || uploadZone.querySelector("i");
   pTag.innerHTML = `Extracting data from ${files.length} resume(s)...`;
-  icon.setAttribute("data-lucide", "loader-2");
-  icon.classList.add("animate-spin");
+  if (icon) {
+    icon.setAttribute("data-lucide", "loader-2");
+    icon.classList.add("animate-spin");
+  }
   lucide.createIcons();
 
   for (let i = 0; i < files.length; i++) {
@@ -695,10 +697,12 @@ function loadAnalyzerCandidateByIndex(idx) {
 function resetUploadZone() {
   uploadZone.classList.remove("parsing");
   const pTag = uploadZone.querySelector("p");
-  const icon = uploadZone.querySelector(".upload-icon");
+  const icon = uploadZone.querySelector(".upload-icon") || uploadZone.querySelector("svg") || uploadZone.querySelector("i");
   pTag.innerHTML = `Drag & drop candidate resume(s) (PDF or TXT) or <span class="browse-link">browse</span>`;
-  icon.setAttribute("data-lucide", "upload-cloud");
-  icon.classList.remove("animate-spin");
+  if (icon) {
+    icon.setAttribute("data-lucide", "upload-cloud");
+    icon.classList.remove("animate-spin");
+  }
   fileInput.value = ""; // clear input
   lucide.createIcons();
 }
@@ -1479,7 +1483,7 @@ window.loadShortlistCandidate = function(idx) {
 };
 
 window.removeShortlistCandidate = function(idx) {
-  if (confirm(`Are you sure you want to remove ${hrShortlist[idx].name} from the shortlist?`)) {
+  if (hrShortlist[idx]) {
     hrShortlist.splice(idx, 1);
     saveShortlist();
     renderShortlistTable();
@@ -1567,11 +1571,9 @@ if (addToShortlistBtn) {
 
 if (clearShortlistBtn) {
   clearShortlistBtn.addEventListener("click", () => {
-    if (confirm("Are you sure you want to clear the entire shortlist?")) {
-      hrShortlist = [];
-      saveShortlist();
-      renderShortlistTable();
-    }
+    hrShortlist = [];
+    saveShortlist();
+    renderShortlistTable();
   });
 }
 
