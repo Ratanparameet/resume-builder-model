@@ -814,3 +814,315 @@ function formattedSkill(skillName) {
   return skillName;
 }
 
+// ---------------------------------------------------------------------------
+// Batch Candidate Screening Engine (Multiple Resume Upload)
+// ---------------------------------------------------------------------------
+const batchDropZone = document.getElementById("batch-drop-zone");
+const batchFileInput = document.getElementById("batch-file-input");
+const batchTargetRole = document.getElementById("batch-target-role");
+const batchProgress = document.getElementById("batch-progress");
+const batchProgressList = document.getElementById("batch-progress-list");
+const batchResults = document.getElementById("batch-results");
+const batchResultsRoleTitle = document.getElementById("batch-results-role-title");
+const batchResultsBody = document.getElementById("batch-results-body");
+
+let batchCandidatesList = []; // Array to store processed candidate profiles
+
+// Trigger file input click when drop zone is clicked
+batchDropZone.addEventListener("click", () => {
+  batchFileInput.click();
+});
+
+// Drag & drop handlers
+batchDropZone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  batchDropZone.classList.add("dragover");
+});
+
+batchDropZone.addEventListener("dragleave", () => {
+  batchDropZone.classList.remove("dragover");
+});
+
+batchDropZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  batchDropZone.classList.remove("dragover");
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    handleBatchFiles(files);
+  }
+});
+
+batchFileInput.addEventListener("change", (e) => {
+  const files = e.target.files;
+  if (files.length > 0) {
+    handleBatchFiles(files);
+  }
+});
+
+async function handleBatchFiles(files) {
+  // Clear previous state
+  batchCandidatesList = [];
+  batchProgressList.innerHTML = "";
+  batchResults.style.display = "none";
+  batchProgress.style.display = "block";
+  
+  const targetRole = batchTargetRole.value;
+  batchResultsRoleTitle.textContent = targetRole;
+
+  // Process files sequentially to avoid async resource lock
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const fileId = `batch-file-${i}`;
+    
+    // Add item to progress list
+    const progressItem = document.createElement("div");
+    progressItem.className = "batch-progress-item";
+    progressItem.id = fileId;
+    progressItem.innerHTML = `
+      <span class="batch-file-name">
+        <i data-lucide="file-text"></i> ${escapeHtml(file.name)}
+      </span>
+      <span class="batch-file-status parsing">Parsing...</span>
+    `;
+    batchProgressList.appendChild(progressItem);
+    lucide.createIcons();
+
+    const fileExt = file.name.split('.').pop().toLowerCase();
+    
+    if (fileExt !== 'pdf' && fileExt !== 'txt') {
+      updateBatchFileStatus(fileId, "Error: Invalid type", "error");
+      continue;
+    }
+
+    try {
+      const text = await readBatchFileContent(file, fileExt);
+      if (!text || text.trim().length === 0) {
+        updateBatchFileStatus(fileId, "Error: Empty content", "error");
+        continue;
+      }
+
+      // Parse candidate resume details
+      const parsed = parseResumeText(text);
+      
+      // Calculate Rule-Based Matching for specifically the selected target role
+      const ruleMatches = calculateRuleBasedMatching(
+        parsed.skills,
+        parsed.education,
+        parsed.experience,
+        parsed.projects,
+        parsed.certificates
+      );
+      
+      // Find matching item for our selected target role
+      const targetRoleMatch = ruleMatches.find(item => item.role === targetRole) || {
+        score: 0,
+        category: "Low Fit"
+      };
+
+      // Concurrently run ML prediction API check (Engine 1)
+      let aiResult = { predicted_role: "Offline/Unknown", confidence: 0 };
+      try {
+        const payload = {
+          education: parsed.education,
+          experience: parsed.experience,
+          projects: parsed.projects,
+          skills: parsed.skills,
+          certificates: parsed.certificates
+        };
+
+        const res = await fetch(`${API_BASE_URL}/api/predict-role`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          const aiData = await res.json();
+          aiResult.predicted_role = aiData.predicted_role;
+          aiResult.confidence = aiData.confidence;
+        }
+      } catch (err) {
+        console.warn("AI/ML prediction failed in batch for candidate, fallback applied.", err);
+      }
+
+      // Add to successful list
+      batchCandidatesList.push({
+        name: parsed.name || file.name.split('.')[0],
+        score: targetRoleMatch.score,
+        category: targetRoleMatch.category,
+        aiPredicted: aiResult.predicted_role,
+        aiConfidence: aiResult.confidence,
+        skills: parsed.skills,
+        fullProfile: parsed
+      });
+
+      updateBatchFileStatus(fileId, "Completed", "done");
+
+    } catch (err) {
+      console.error(`Error processing file ${file.name}:`, err);
+      updateBatchFileStatus(fileId, "Error parsing file", "error");
+    }
+  }
+
+  // Display and rank results
+  renderBatchScreenResults();
+}
+
+function updateBatchFileStatus(elementId, text, statusClass) {
+  const item = document.getElementById(elementId);
+  if (item) {
+    const statusSpan = item.querySelector(".batch-file-status");
+    statusSpan.textContent = text;
+    statusSpan.className = `batch-file-status ${statusClass}`;
+  }
+}
+
+function readBatchFileContent(file, fileExt) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    if (fileExt === 'txt') {
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = (err) => reject(err);
+      reader.readAsText(file);
+    } else if (fileExt === 'pdf') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+      
+      reader.onload = async (e) => {
+        const typedarray = new Uint8Array(e.target.result);
+        try {
+          const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
+          let fullText = "";
+          
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            
+            // Group text items by y-coordinate
+            const items = textContent.items;
+            const tolerance = 4;
+            const linesMap = {};
+            
+            items.forEach(item => {
+              const y = item.transform[5];
+              const x = item.transform[4];
+              
+              let foundY = null;
+              for (const key of Object.keys(linesMap)) {
+                if (Math.abs(parseFloat(key) - y) < tolerance) {
+                  foundY = key;
+                  break;
+                }
+              }
+              
+              if (foundY !== null) {
+                linesMap[foundY].push({ x, text: item.str });
+              } else {
+                linesMap[y] = [{ x, text: item.str }];
+              }
+            });
+            
+            const sortedYKeys = Object.keys(linesMap).sort((a, b) => parseFloat(b) - parseFloat(a));
+            
+            sortedYKeys.forEach(yKey => {
+              const lineItems = linesMap[yKey].sort((a, b) => a.x - b.x);
+              const lineStr = lineItems.map(item => item.text).join(" ").trim();
+              if (lineStr.length > 0) {
+                fullText += lineStr + "\n";
+              }
+            });
+            fullText += "\n";
+          }
+          resolve(fullText);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsArrayBuffer(file);
+    }
+  });
+}
+
+function renderBatchScreenResults() {
+  // Sort candidates descending by match score
+  batchCandidatesList.sort((a, b) => b.score - a.score);
+
+  if (batchCandidatesList.length === 0) {
+    batchResultsBody.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align:center; color:#64748b;">No candidates could be successfully matched. Please verify file formats.</td>
+      </tr>
+    `;
+  } else {
+    batchResultsBody.innerHTML = batchCandidatesList
+      .map((c, idx) => {
+        let catClass = "low-fit";
+        if (c.category === "Strong Fit") catClass = "strong-fit";
+        if (c.category === "Moderate Fit") catClass = "moderate-fit";
+        
+        const scorePercent = `${c.score}%`;
+        const aiConfStr = c.aiConfidence > 0 ? `${Math.round(c.aiConfidence * 100)}%` : "N/A";
+        
+        return `
+          <tr>
+            <td><strong>#${idx + 1}</strong></td>
+            <td><strong>${escapeHtml(c.name)}</strong></td>
+            <td><span class="badge-score font-mono">${scorePercent}</span></td>
+            <td><span class="fit-tag ${catClass}">${c.category}</span></td>
+            <td>
+              <span class="badge-conf" style="background-color:#f1f5f9; color:#475569; padding:0.15rem 0.4rem; border-radius:4px; font-size:0.75rem;">
+                ${escapeHtml(c.aiPredicted)}
+              </span>
+              <span style="font-size:0.75rem; color:#64748b; font-family:var(--font-mono); margin-left:0.25rem;">(${aiConfStr})</span>
+            </td>
+            <td style="max-width:220px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(c.skills)}">
+              ${escapeHtml(c.skills || "None")}
+            </td>
+            <td>
+              <button class="btn-table-action" onclick="loadBatchCandidate(${idx})">Load Profiler</button>
+            </td>
+          </tr>
+        `;
+      })
+      .join("");
+  }
+  
+  // Hide progress after short delay and show results
+  setTimeout(() => {
+    batchProgress.style.display = "none";
+    batchResults.style.display = "block";
+    lucide.createIcons();
+    
+    // Scroll results table into view
+    batchResults.scrollIntoView({ behavior: 'smooth' });
+  }, 500);
+}
+
+// Global action callback to load candidate details back into analyzer form
+window.loadBatchCandidate = function(index) {
+  const candidate = batchCandidatesList[index];
+  if (!candidate || !candidate.fullProfile) return;
+  
+  // Switch to Analyzer Tab
+  const analyzerTab = document.querySelector('[data-tab="analyzer"]');
+  if (analyzerTab) {
+    analyzerTab.click();
+  }
+  
+  // Populate form
+  const profile = candidate.fullProfile;
+  document.getElementById("candidate-name").value = candidate.name;
+  document.getElementById("education").value = profile.education;
+  document.getElementById("experience").value = profile.experience;
+  document.getElementById("skills").value = profile.skills;
+  document.getElementById("projects").value = profile.projects;
+  document.getElementById("certificates").value = profile.certificates;
+  
+  // Trigger Submit
+  setTimeout(() => {
+    form.dispatchEvent(new Event('submit'));
+  }, 100);
+};
+
+

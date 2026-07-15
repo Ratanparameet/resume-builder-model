@@ -1150,3 +1150,191 @@ body {
   }
 }
 
+/* ==========================================================================
+   Batch Screening Panel (inside Role Matrix tab)
+   ========================================================================== */
+.batch-screening-panel {
+  background-color: #fafafa;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  margin-bottom: 2.5rem;
+}
+
+.batch-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1.5px solid var(--border-color);
+  padding-bottom: 0.5rem;
+}
+
+.batch-header i {
+  color: var(--primary);
+  width: 22px;
+  height: 22px;
+}
+
+.batch-header h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.batch-config-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.batch-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.batch-field label {
+  font-size: 0.825rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  letter-spacing: 0.05em;
+}
+
+.batch-field select {
+  padding: 0.85rem 1rem;
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  color: #1e293b;
+  background-color: #ffffff;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.batch-field select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px var(--primary-glow);
+}
+
+.batch-upload-box {
+  border: 2px dashed #cbd5e1;
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  text-align: center;
+  background-color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  transition: all 0.25s ease;
+}
+
+.batch-upload-box:hover, .batch-upload-box.dragover {
+  border-color: var(--primary);
+  background-color: var(--primary-glow);
+}
+
+.batch-upload-icon {
+  width: 36px;
+  height: 36px;
+  color: #94a3b8;
+  transition: all 0.25s ease;
+}
+
+.batch-upload-box:hover .batch-upload-icon, .batch-upload-box.dragover .batch-upload-icon {
+  color: var(--primary);
+  transform: translateY(-2px);
+}
+
+.batch-upload-box p {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.batch-browse {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+/* Batch progress indicators */
+.batch-progress-container {
+  margin-top: 1.5rem;
+  background-color: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+}
+
+.batch-progress-container h4 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #475569;
+  margin-bottom: 0.75rem;
+}
+
+.batch-progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.batch-progress-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.825rem;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--bg-light);
+  border-radius: 4px;
+  border: 1px solid #f1f5f9;
+}
+
+.batch-file-name {
+  font-weight: 600;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.batch-file-status {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.batch-file-status.done {
+  color: #10b981;
+}
+
+.batch-file-status.parsing {
+  color: var(--accent-gold);
+}
+
+.batch-file-status.error {
+  color: #ef4444;
+}
+
+.batch-results-container h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  .batch-config-row {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+

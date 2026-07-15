@@ -222,6 +222,64 @@
           <span class="info-badge">Part 1: Step 1 (Defined Roles)</span>
         </div>
         <p class="section-desc">These are the standard skill requirements defined for Graphura's primary internship pathways. Rule-based scoring matches candidates directly against this matrix.</p>
+
+        <!-- Batch Screening Tool inside Role Matrix -->
+        <div class="batch-screening-panel">
+          <div class="batch-header">
+            <i data-lucide="scan-eye"></i>
+            <h3>Batch Screen Candidates for Pathway</h3>
+          </div>
+          
+          <div class="batch-config-row">
+            <div class="batch-field">
+              <label for="batch-target-role">Target Internship Role:</label>
+              <select id="batch-target-role">
+                <option value="Data Analytics Intern">Data Analytics Intern</option>
+                <option value="Web Development Intern">Web Development Intern</option>
+                <option value="Digital Marketing Intern">Digital Marketing Intern</option>
+                <option value="Graphic Design Intern">Graphic Design Intern</option>
+                <option value="HR / Operations Intern">HR / Operations Intern</option>
+              </select>
+            </div>
+            
+            <div class="batch-upload-box" id="batch-drop-zone">
+              <i data-lucide="files" class="batch-upload-icon"></i>
+              <p>Drag & drop multiple candidate resumes (PDF/TXT) or <span class="batch-browse">browse</span></p>
+              <input type="file" id="batch-file-input" accept=".pdf,.txt" multiple style="display:none;">
+            </div>
+          </div>
+          
+          <!-- Batch Screening Progress / Status -->
+          <div class="batch-progress-container" id="batch-progress" style="display:none;">
+            <h4>Processing Resumes...</h4>
+            <div class="batch-progress-list" id="batch-progress-list">
+              <!-- Dynamically populated files processing state -->
+            </div>
+          </div>
+
+          <!-- Batch Screening Results Table -->
+          <div class="batch-results-container" id="batch-results" style="display:none; margin-top: 1.5rem;">
+            <h4>Ranked Candidates for <span id="batch-results-role-title">Selected Role</span></h4>
+            <div class="table-container">
+              <table class="dashboard-table">
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>Candidate Name</th>
+                    <th>Selected Role Match</th>
+                    <th>Fit Category</th>
+                    <th>AI Best Fit (ML)</th>
+                    <th>Top Skills Found</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="batch-results-body">
+                  <!-- Dynamically populated batch results -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
         
         <div class="matrix-grid">
           
