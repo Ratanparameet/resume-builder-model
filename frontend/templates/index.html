@@ -271,7 +271,12 @@
 
           <!-- Batch Screening Results Table -->
           <div class="batch-results-container" id="batch-results" style="display:none; margin-top: 1.5rem;">
-            <h4>Ranked Candidates for <span id="batch-results-role-title">Selected Role</span></h4>
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.75rem; margin-bottom:0.75rem;">
+              <h4 style="margin:0;">Ranked Candidates for <span id="batch-results-role-title">Selected Role</span></h4>
+              <button type="button" id="clear-batch-results-btn" class="btn-secondary" style="padding:0.45rem 1rem; font-size:0.82rem; display:inline-flex; align-items:center; gap:0.35rem; height:auto;">
+                <i data-lucide="trash-2" style="width:14px; height:14px;"></i> Clear All
+              </button>
+            </div>
             <div class="table-container">
               <table class="dashboard-table">
                 <thead>

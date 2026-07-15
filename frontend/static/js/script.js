@@ -1185,13 +1185,13 @@ function renderBatchScreenResults() {
         const aiConfStr = c.aiConfidence > 0 ? `${Math.round(c.aiConfidence * 100)}%` : "N/A";
         
         return `
-          <tr>
+          <tr id="batch-row-${idx}">
             <td><strong>#${idx + 1}</strong></td>
             <td><strong>${escapeHtml(c.name)}</strong></td>
             <td><span class="badge-score font-mono">${scorePercent}</span></td>
             <td><span class="fit-tag ${catClass}">${c.category}</span></td>
             <td>
-              <span class="badge-conf" style="background-color:#f1f5f9; color:#475569; padding:0.15rem 0.4rem; border-radius:4px; font-size:0.75rem;">
+              <span class="badge-conf" style="background-color:#fdf7f8; color:#7a2735; padding:0.15rem 0.4rem; border-radius:4px; font-size:0.75rem;">
                 ${escapeHtml(c.aiPredicted)}
               </span>
               <span style="font-size:0.75rem; color:#64748b; font-family:var(--font-mono); margin-left:0.25rem;">(${aiConfStr})</span>
@@ -1200,10 +1200,13 @@ function renderBatchScreenResults() {
               ${escapeHtml(c.skills || "None")}
             </td>
             <td>
-              <div style="display:flex; gap:0.35rem;">
+              <div style="display:flex; gap:0.35rem; flex-wrap:wrap;">
                 <button class="btn-table-action" onclick="loadBatchCandidate(${idx})">Load Profiler</button>
-                <button class="btn-table-action" id="batch-shortlist-btn-${idx}" style="color:#0284c7; border-color:#93c5fd; background-color:#f0f9ff;" onclick="shortlistBatchCandidate(${idx})">
+                <button class="btn-table-action" id="batch-shortlist-btn-${idx}" style="color:#993445; border-color:#fecdd3; background-color:#fff1f2;" onclick="shortlistBatchCandidate(${idx})">
                   <i data-lucide="user-plus" style="width:12px; height:12px; display:inline-block;"></i> Shortlist
+                </button>
+                <button class="btn-table-action" style="color:#ef4444; border-color:#fca5a5; background-color:#fff5f5;" onclick="removeBatchCandidate(${idx})">
+                  <i data-lucide="trash-2" style="width:12px; height:12px; display:inline-block; vertical-align:middle;"></i> Remove
                 </button>
               </div>
             </td>
@@ -1223,6 +1226,18 @@ function renderBatchScreenResults() {
     batchResults.scrollIntoView({ behavior: 'smooth' });
   }, 500);
 }
+
+// Remove a single candidate from the batch results list and re-render
+window.removeBatchCandidate = function(idx) {
+  if (batchCandidatesList[idx]) {
+    batchCandidatesList.splice(idx, 1);
+    if (batchCandidatesList.length === 0) {
+      batchResults.style.display = "none";
+    } else {
+      renderBatchScreenResults();
+    }
+  }
+};
 
 // Global action callback to load candidate details back into analyzer form
 window.loadBatchCandidate = function(index) {
@@ -1586,6 +1601,22 @@ if (shortlistFilterRole) {
 // Initialize HR Shortlist on startup
 loadShortlist();
 renderShortlistTable();
+
+// ---------------------------------------------------------------------------
+// Clear All Batch Results Button
+// ---------------------------------------------------------------------------
+const clearBatchResultsBtn = document.getElementById("clear-batch-results-btn");
+if (clearBatchResultsBtn) {
+  clearBatchResultsBtn.addEventListener("click", () => {
+    batchCandidatesList = [];
+    batchResultsBody.innerHTML = "";
+    batchResults.style.display = "none";
+    batchProgress.style.display = "none";
+    batchProgressList.innerHTML = "";
+    batchFileInput.value = "";
+    lucide.createIcons();
+  });
+}
 
 
 
