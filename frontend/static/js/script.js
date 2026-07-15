@@ -305,7 +305,7 @@ function renderReport(candidateName, aiData, ruleData) {
   } else if (bestRule.score >= 40) {
     recommendationText = `<strong>Conditional Match.</strong> ${candidateName} shows moderate suitability (<strong>${bestRule.score}%</strong> match) for the <strong>${bestRule.role}</strong> pathway. Consider mentoring them on missing tools/methods: <em>${bestRule.missing.slice(0, 3).join(", ")}</em>. `;
   } else {
-    recommendationText = `<strong>Low Matrix Match.</strong> Candidate does not meet the baseline skill matrix thresholds for Graphura's standard roles. `;
+    recommendationText = `<strong>Low Matrix Match.</strong> Candidate does not meet the baseline skill matrix thresholds for RAREINFOWAY's standard roles. `;
   }
   
   if (predictedRole) {
@@ -1313,7 +1313,7 @@ const DEFAULT_SHORTLIST = [
 let hrShortlist = [];
 
 function loadShortlist() {
-  const stored = localStorage.getItem("graphura_hr_shortlist");
+  const stored = localStorage.getItem("rareinfoway_hr_shortlist");
   if (stored) {
     try {
       hrShortlist = JSON.parse(stored);
@@ -1328,7 +1328,7 @@ function loadShortlist() {
 }
 
 function saveShortlist() {
-  localStorage.setItem("graphura_hr_shortlist", JSON.stringify(hrShortlist));
+  localStorage.setItem("rareinfoway_hr_shortlist", JSON.stringify(hrShortlist));
 }
 
 function renderShortlistTable() {

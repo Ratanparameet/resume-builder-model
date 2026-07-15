@@ -1,16 +1,16 @@
 /* ==========================================================================
-   Graphura India - Resume & Skill Matching Engine Design Tokens
+   RAREINFOWAY - Resume & Skill Matching Engine Design Tokens
    ========================================================================== */
 :root {
   /* Color Palette */
-  --bg-primary: #0f172a;      /* Dark rich slate */
-  --bg-secondary: #1e293b;    /* Card & panel backgrounds */
-  --bg-light: #f8fafc;        /* Main container background */
-  --border-color: #e2e8f0;    /* Muted dividers/borders */
+  --bg-primary: #1a0d10;      /* Deep dark burgundy */
+  --bg-secondary: #2b1219;    /* Card & panel backgrounds */
+  --bg-light: #fdf7f8;        /* Main container background */
+  --border-color: #e8d5d9;    /* Muted rose dividers */
   
-  --primary: #0284c7;         /* Sky blue theme */
-  --primary-hover: #0369a1;
-  --primary-glow: rgba(2, 132, 199, 0.15);
+  --primary: #993445;         /* RAREINFOWAY Burgundy */
+  --primary-hover: #7a2735;
+  --primary-glow: rgba(153, 52, 69, 0.15);
   
   --accent-gold: #f59e0b;     /* Warm highlight */
   
@@ -71,7 +71,7 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(135deg, rgba(2, 132, 199, 0.2) 0%, transparent 60%);
+  background: linear-gradient(135deg, rgba(153, 52, 69, 0.35) 0%, rgba(90, 20, 36, 0.15) 60%, transparent 100%);
   z-index: 1;
 }
 
@@ -91,18 +91,14 @@ body {
   gap: 0.75rem;
 }
 
-.logo-icon {
-  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
-  color: #fff;
-  font-weight: 800;
-  font-size: 1.5rem;
-  width: 40px;
-  height: 40px;
+.logo-img {
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 0 15px rgba(2, 132, 199, 0.4);
+  object-fit: cover;
+  flex-shrink: 0;
+  filter: brightness(1.5) contrast(1.6);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.35), 0 0 15px rgba(153, 52, 69, 0.5);
 }
 
 .logo-text {
@@ -173,7 +169,7 @@ body {
   font-weight: 800;
   margin-bottom: 0.75rem;
   letter-spacing: -0.02em;
-  background: linear-gradient(to right, #ffffff, #93c5fd);
+  background: linear-gradient(to right, #ffffff, #fda4af);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -451,13 +447,13 @@ body {
   align-items: center;
   gap: 0.5rem;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.2);
+  box-shadow: 0 4px 6px -1px rgba(153, 52, 69, 0.3);
 }
 
 .btn-primary:hover {
   background-color: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 6px 12px -2px rgba(2, 132, 199, 0.3);
+  box-shadow: 0 6px 12px -2px rgba(153, 52, 69, 0.45);
 }
 
 .btn-primary:active {
@@ -518,7 +514,7 @@ body {
 }
 
 .report-status-badge.active-analysis {
-  background-color: rgba(2, 132, 199, 0.15);
+  background-color: rgba(153, 52, 69, 0.15);
   color: var(--primary);
 }
 
@@ -621,8 +617,8 @@ body {
 }
 
 .ai-engine {
-  background-color: #f0f9ff;
-  border-color: #bae6fd;
+  background-color: #fff1f2;
+  border-color: #fecdd3;
 }
 
 .rules-engine {
@@ -634,7 +630,7 @@ body {
   font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: #0369a1;
+  color: #7a2735;
   margin-bottom: 0.5rem;
 }
 
@@ -650,7 +646,7 @@ body {
   background-color: #ffffff;
   padding: 1.25rem;
   border-radius: var(--radius-sm);
-  border: 1.5px solid #bae6fd;
+  border: 1.5px solid #fecdd3;
   margin-bottom: 1.5rem;
   box-shadow: var(--shadow-sm);
 }
@@ -658,7 +654,7 @@ body {
 .best-role-hero h3 {
   font-size: 1.6rem;
   font-weight: 800;
-  color: #0369a1;
+  color: #7a2735;
   margin-bottom: 0.75rem;
 }
 
@@ -672,19 +668,19 @@ body {
   font-family: var(--font-mono);
   font-size: 0.8rem;
   font-weight: 700;
-  color: #0284c7;
+  color: #993445;
 }
 
 .meter-track {
   height: 8px;
-  background-color: #e0f2fe;
+  background-color: #fce7ea;
   border-radius: 10px;
   overflow: hidden;
 }
 
 .meter-bar {
   height: 100%;
-  background: linear-gradient(90deg, #0ea5e9, #0284c7);
+  background: linear-gradient(90deg, #c45068, #993445);
   border-radius: 10px;
   transition: width 1s ease-out;
 }
@@ -720,13 +716,13 @@ body {
   font-family: var(--font-mono);
   font-size: 0.8rem;
   font-weight: 700;
-  color: #0284c7;
+  color: #993445;
 }
 
 .rank-track {
   grid-column: 1 / -1;
   height: 6px;
-  background-color: rgba(2, 132, 199, 0.1);
+  background-color: rgba(153, 52, 69, 0.12);
   border-radius: 10px;
   overflow: hidden;
 }
@@ -919,7 +915,7 @@ body {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background-color: rgba(2, 132, 199, 0.1);
+  background-color: rgba(153, 52, 69, 0.12);
   color: var(--primary);
   display: flex;
   align-items: center;
@@ -991,8 +987,8 @@ body {
 }
 
 .badge-conf {
-  background-color: #e0f2fe;
-  color: #0369a1;
+  background-color: #fce7ea;
+  color: #7a2735;
   font-family: var(--font-mono);
   font-weight: 700;
   padding: 0.25rem 0.5rem;
@@ -1096,7 +1092,7 @@ body {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   font-weight: 600;
-  color: #38bdf8;
+  color: #fda4af;
 }
 
 /* ==========================================================================
