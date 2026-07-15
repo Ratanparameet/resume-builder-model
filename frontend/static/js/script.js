@@ -469,140 +469,234 @@ uploadZone.addEventListener("dragleave", () => {
   uploadZone.classList.remove("dragover");
 });
 
+let sessionCandidatesList = [];
+
+const analyzerSelectName = document.getElementById("analyzer-select-name");
+if (analyzerSelectName) {
+  analyzerSelectName.addEventListener("change", (e) => {
+    const idx = parseInt(e.target.value);
+    loadAnalyzerCandidateByIndex(idx);
+  });
+}
+
 uploadZone.addEventListener("drop", (e) => {
   e.preventDefault();
   uploadZone.classList.remove("dragover");
   const files = e.dataTransfer.files;
   if (files.length > 0) {
-    handleUploadedFile(files[0]);
+    handleUploadedFiles(files);
   }
 });
 
 fileInput.addEventListener("change", (e) => {
   const files = e.target.files;
   if (files.length > 0) {
-    handleUploadedFile(files[0]);
+    handleUploadedFiles(files);
   }
 });
 
-async function handleUploadedFile(file) {
-  const fileExt = file.name.split('.').pop().toLowerCase();
+async function handleUploadedFiles(files) {
+  // Clear previous session candidates if uploading a new batch
+  sessionCandidatesList = [];
   
-  if (fileExt !== 'pdf' && fileExt !== 'txt') {
-    alert("Please upload a valid PDF or TXT file.");
-    return;
-  }
-
-  // Visual state change
+  // Show visual processing state
   uploadZone.classList.add("parsing");
   const pTag = uploadZone.querySelector("p");
   const icon = uploadZone.querySelector(".upload-icon");
-  pTag.innerHTML = `Extracting data from <strong style="color:var(--accent-gold);">${file.name}</strong>...`;
+  pTag.innerHTML = `Extracting data from ${files.length} resume(s)...`;
   icon.setAttribute("data-lucide", "loader-2");
   icon.classList.add("animate-spin");
   lucide.createIcons();
 
-  const reader = new FileReader();
-
-  if (fileExt === 'txt') {
-    reader.onload = function(e) {
-      const text = e.target.result;
-      processExtractedText(text);
-    };
-    reader.readAsText(file);
-  } else if (fileExt === 'pdf') {
-    // Configure PDF.js worker Src
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const fileExt = file.name.split('.').pop().toLowerCase();
     
-    reader.onload = async function(e) {
-      const typedarray = new Uint8Array(e.target.result);
-      try {
-        // PDF.js parse
-        const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
-        let fullText = "";
-        
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const textContent = await page.getTextContent();
-          
-          // Reconstruct lines using item transform positioning
-          const items = textContent.items;
-          const tolerance = 4; // pixels for same visual line
-          const linesMap = {};
-          
-          items.forEach(item => {
-            const y = item.transform[5];
-            const x = item.transform[4];
-            
-            let foundY = null;
-            for (const key of Object.keys(linesMap)) {
-              if (Math.abs(parseFloat(key) - y) < tolerance) {
-                foundY = key;
-                break;
-              }
-            }
-            
-            if (foundY !== null) {
-              linesMap[foundY].push({ x, text: item.str });
-            } else {
-              linesMap[y] = [{ x, text: item.str }];
-            }
-          });
-          
-          // Sort lines from top to bottom
-          const sortedYKeys = Object.keys(linesMap).sort((a, b) => parseFloat(b) - parseFloat(a));
-          
-          sortedYKeys.forEach(yKey => {
-            // Sort items on the same line from left to right
-            const lineItems = linesMap[yKey].sort((a, b) => a.x - b.x);
-            const lineStr = lineItems.map(item => item.text).join(" ").trim();
-            if (lineStr.length > 0) {
-              fullText += lineStr + "\n";
-            }
-          });
-          fullText += "\n";
-        }
-        
-        processExtractedText(fullText);
-      } catch (err) {
-        console.error("PDF extraction failed", err);
-        alert("Failed to parse PDF file. Please ensure it is a text-based PDF (not scanned/image-based) or try a TXT file.");
-        resetUploadZone();
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  }
-}
+    if (fileExt !== 'pdf' && fileExt !== 'txt') {
+      console.warn(`File ${file.name} is not a PDF/TXT, skipping.`);
+      continue;
+    }
 
-function processExtractedText(text) {
-  if (!text || text.trim().length === 0) {
-    alert("No text content could be extracted from the resume.");
-    resetUploadZone();
+    try {
+      pTag.innerHTML = `Parsing (${i + 1}/${files.length}): <strong style="color:var(--accent-gold);">${file.name}</strong>...`;
+      const text = await readUploadedFileText(file, fileExt);
+      
+      if (!text || text.trim().length === 0) {
+        continue;
+      }
+
+      const parsed = parseResumeText(text);
+      
+      // Calculate Rule-Based Matching
+      const ruleData = calculateRuleBasedMatching(
+        parsed.skills,
+        parsed.education,
+        parsed.experience,
+        parsed.projects,
+        parsed.certificates
+      );
+
+      // Concurrently run ML prediction API check (Engine 1)
+      let aiData = { predicted_role: "Offline/Unknown", confidence: 0, top_roles: [] };
+      try {
+        const payload = {
+          education: parsed.education,
+          experience: parsed.experience,
+          projects: parsed.projects,
+          skills: parsed.skills,
+          certificates: parsed.certificates
+        };
+
+        const res = await fetch(`${API_BASE_URL}/api/predict-role`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          aiData = await res.json();
+        }
+      } catch (err) {
+        console.warn("AI prediction failed for candidate in session upload", err);
+      }
+
+      sessionCandidatesList.push({
+        name: parsed.name || file.name.split('.')[0],
+        parsed: parsed,
+        aiData: aiData,
+        ruleData: ruleData
+      });
+
+    } catch (err) {
+      console.error(`Error uploading and parsing file ${file.name}:`, err);
+    }
+  }
+
+  resetUploadZone();
+
+  if (sessionCandidatesList.length === 0) {
+    alert("No valid candidate resumes could be parsed.");
     return;
   }
 
-  const parsed = parseResumeText(text);
-  
+  // Populate Candidate Selector
+  populateAnalyzerSelector();
+
+  // Load the first candidate
+  loadAnalyzerCandidateByIndex(0);
+}
+
+function readUploadedFileText(file, fileExt) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    if (fileExt === 'txt') {
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = (err) => reject(err);
+      reader.readAsText(file);
+    } else if (fileExt === 'pdf') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+      
+      reader.onload = async (e) => {
+        const typedarray = new Uint8Array(e.target.result);
+        try {
+          const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
+          let fullText = "";
+          
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            
+            const items = textContent.items;
+            const tolerance = 4;
+            const linesMap = {};
+            
+            items.forEach(item => {
+              const y = item.transform[5];
+              const x = item.transform[4];
+              
+              let foundY = null;
+              for (const key of Object.keys(linesMap)) {
+                if (Math.abs(parseFloat(key) - y) < tolerance) {
+                  foundY = key;
+                  break;
+                }
+              }
+              
+              if (foundY !== null) {
+                linesMap[foundY].push({ x, text: item.str });
+              } else {
+                linesMap[y] = [{ x, text: item.str }];
+              }
+            });
+            
+            const sortedYKeys = Object.keys(linesMap).sort((a, b) => parseFloat(b) - parseFloat(a));
+            
+            sortedYKeys.forEach(yKey => {
+              const lineItems = linesMap[yKey].sort((a, b) => a.x - b.x);
+              const lineStr = lineItems.map(item => item.text).join(" ").trim();
+              if (lineStr.length > 0) {
+                fullText += lineStr + "\n";
+              }
+            });
+            fullText += "\n";
+          }
+          resolve(fullText);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsArrayBuffer(file);
+    }
+  });
+}
+
+function populateAnalyzerSelector() {
+  const selectorRow = document.getElementById("analyzer-candidate-selector");
+  const selectEl = document.getElementById("analyzer-select-name");
+  if (!selectorRow || !selectEl) return;
+
+  if (sessionCandidatesList.length > 1) {
+    selectorRow.style.display = "flex";
+    selectEl.innerHTML = sessionCandidatesList
+      .map((c, idx) => {
+        const bestRole = c.ruleData[0] || { role: "N/A" };
+        return `<option value="${idx}">${escapeHtml(c.name)} (${escapeHtml(bestRole.role)})</option>`;
+      })
+      .join("");
+  } else {
+    selectorRow.style.display = "none";
+  }
+}
+
+function loadAnalyzerCandidateByIndex(idx) {
+  const c = sessionCandidatesList[idx];
+  if (!c) return;
+
   // Fill form columns
-  document.getElementById("candidate-name").value = parsed.name || "";
-  document.getElementById("education").value = parsed.education || "";
-  document.getElementById("experience").value = parsed.experience || "";
-  document.getElementById("skills").value = parsed.skills || "";
-  document.getElementById("projects").value = parsed.projects || "";
-  document.getElementById("certificates").value = parsed.certificates || "";
+  document.getElementById("candidate-name").value = c.name;
+  document.getElementById("education").value = c.parsed.education || "";
+  document.getElementById("experience").value = c.parsed.experience || "";
+  document.getElementById("skills").value = c.parsed.skills || "";
+  document.getElementById("projects").value = c.parsed.projects || "";
+  document.getElementById("certificates").value = c.parsed.certificates || "";
+
+  // Render the report
+  renderReport(c.name, c.aiData, c.ruleData);
   
-  // Trigger form submit to run match analysis immediately
-  setTimeout(() => {
-    resetUploadZone();
-    form.dispatchEvent(new Event('submit'));
-  }, 800);
+  // Show results panel
+  emptyState.style.display = "none";
+  resultsContent.hidden = false;
+  
+  lucide.createIcons();
 }
 
 function resetUploadZone() {
   uploadZone.classList.remove("parsing");
   const pTag = uploadZone.querySelector("p");
   const icon = uploadZone.querySelector(".upload-icon");
-  pTag.innerHTML = `Drag & drop candidate resume (PDF or TXT) or <span class="browse-link">browse</span>`;
+  pTag.innerHTML = `Drag & drop candidate resume(s) (PDF or TXT) or <span class="browse-link">browse</span>`;
   icon.setAttribute("data-lucide", "upload-cloud");
   icon.classList.remove("animate-spin");
   fileInput.value = ""; // clear input
@@ -1235,6 +1329,7 @@ function saveShortlist() {
 
 function renderShortlistTable() {
   const tableBody = document.getElementById("shortlist-table-body");
+  const filterRole = document.getElementById("shortlist-filter-role") ? document.getElementById("shortlist-filter-role").value : "All";
   if (!tableBody) return;
 
   if (hrShortlist.length === 0) {
@@ -1246,14 +1341,64 @@ function renderShortlistTable() {
     return;
   }
 
-  tableBody.innerHTML = hrShortlist
+  // Process and score candidates based on the selected filter
+  let processedList = hrShortlist.map(c => {
+    // Re-calculate scores for all roles based on their full profile
+    const profile = c.fullProfile || {};
+    const ruleMatches = calculateRuleBasedMatching(
+      profile.skills || "",
+      profile.education || "",
+      profile.experience || "",
+      profile.projects || "",
+      profile.certificates || ""
+    );
+
+    if (filterRole === "All") {
+      const bestMatch = ruleMatches[0] || { role: "N/A", score: 0, category: "Low Fit" };
+      return {
+        ...c,
+        displayRole: bestMatch.role,
+        displayScore: bestMatch.score,
+        displayCategory: bestMatch.category
+      };
+    } else {
+      const specificMatch = ruleMatches.find(r => r.role === filterRole) || { role: filterRole, score: 0, category: "Low Fit" };
+      return {
+        ...c,
+        displayRole: specificMatch.role,
+        displayScore: specificMatch.score,
+        displayCategory: specificMatch.category
+      };
+    }
+  });
+
+  // Sort descending by pathway score
+  processedList.sort((a, b) => b.displayScore - a.displayScore);
+
+  // If a specific role is filtered, we only show candidates who have a matching suitability > 0%
+  if (filterRole !== "All") {
+    processedList = processedList.filter(c => c.displayScore > 0);
+  }
+
+  if (processedList.length === 0) {
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align:center; color:#64748b; padding: 2rem;">No candidates match the selected pathway "${filterRole}".</td>
+      </tr>
+    `;
+    return;
+  }
+
+  tableBody.innerHTML = processedList
     .map((c, idx) => {
       let catClass = "low-fit";
-      if (c.category === "Strong Fit") catClass = "strong-fit";
-      if (c.category === "Moderate Fit") catClass = "moderate-fit";
+      if (c.displayCategory === "Strong Fit") catClass = "strong-fit";
+      if (c.displayCategory === "Moderate Fit") catClass = "moderate-fit";
 
-      const scorePercent = `${c.bestRuleScore}%`;
+      const scorePercent = `${c.displayScore}%`;
       const aiConfStr = c.aiConfidence > 0 ? `${Math.round(c.aiConfidence * 100)}%` : "N/A";
+      
+      const originalIndex = hrShortlist.findIndex(item => item.name === c.name);
 
       return `
         <tr>
@@ -1264,13 +1409,13 @@ function renderShortlistTable() {
             </span>
           </td>
           <td><span class="badge-conf">${aiConfStr}</span></td>
-          <td>${escapeHtml(c.bestRuleRole)}</td>
+          <td>${escapeHtml(c.displayRole)}</td>
           <td><span class="badge-score font-mono">${scorePercent}</span></td>
-          <td><span class="fit-tag ${catClass}">${c.category}</span></td>
+          <td><span class="fit-tag ${catClass}">${c.displayCategory}</span></td>
           <td>
             <div style="display:flex; gap:0.5rem;">
-              <button class="btn-table-action" onclick="loadShortlistCandidate(${idx})">Load Profiler</button>
-              <button class="btn-table-action" style="color:#ef4444; border-color:#fca5a5; background-color:#fff5f5;" onclick="removeShortlistCandidate(${idx})">
+              <button class="btn-table-action" onclick="loadShortlistCandidateByName('${escapeHtml(c.name)}')">Load Profiler</button>
+              <button class="btn-table-action" style="color:#ef4444; border-color:#fca5a5; background-color:#fff5f5;" onclick="removeShortlistCandidate(${originalIndex})">
                 <i data-lucide="trash-2" style="width:12px; height:12px; display:inline-block; vertical-align:middle;"></i> Remove
               </button>
             </div>
@@ -1282,6 +1427,31 @@ function renderShortlistTable() {
 
   lucide.createIcons();
 }
+
+window.loadShortlistCandidateByName = function(name) {
+  const c = hrShortlist.find(item => item.name === name);
+  if (!c || !c.fullProfile) return;
+
+  // Switch to Analyzer Tab
+  const analyzerTab = document.querySelector('[data-tab="analyzer"]');
+  if (analyzerTab) {
+    analyzerTab.click();
+  }
+
+  // Populate form
+  const profile = c.fullProfile;
+  document.getElementById("candidate-name").value = c.name;
+  document.getElementById("education").value = profile.education || "";
+  document.getElementById("experience").value = profile.experience || "";
+  document.getElementById("skills").value = profile.skills || "";
+  document.getElementById("projects").value = profile.projects || "";
+  document.getElementById("certificates").value = profile.certificates || "";
+
+  // Trigger Submit
+  setTimeout(() => {
+    form.dispatchEvent(new Event('submit'));
+  }, 100);
+};
 
 window.loadShortlistCandidate = function(idx) {
   const c = hrShortlist[idx];
@@ -1354,6 +1524,7 @@ window.shortlistBatchCandidate = function(idx) {
 // Event Listeners for shortlisting actions
 const addToShortlistBtn = document.getElementById("add-to-shortlist-btn");
 const clearShortlistBtn = document.getElementById("clear-shortlist-btn");
+const shortlistFilterRole = document.getElementById("shortlist-filter-role");
 
 if (addToShortlistBtn) {
   addToShortlistBtn.addEventListener("click", () => {
@@ -1401,6 +1572,12 @@ if (clearShortlistBtn) {
       saveShortlist();
       renderShortlistTable();
     }
+  });
+}
+
+if (shortlistFilterRole) {
+  shortlistFilterRole.addEventListener("change", () => {
+    renderShortlistTable();
   });
 }
 

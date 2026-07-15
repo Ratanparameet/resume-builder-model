@@ -72,9 +72,9 @@
             <!-- Resume File Upload Zone -->
             <div class="resume-upload-zone" id="upload-zone">
               <i data-lucide="upload-cloud" class="upload-icon"></i>
-              <p>Drag & drop candidate resume (PDF or TXT) or <span class="browse-link">browse</span></p>
+              <p>Drag & drop candidate resume(s) (PDF or TXT) or <span class="browse-link">browse</span></p>
               <span class="file-limits">Supports PDF, TXT (Max 5MB)</span>
-              <input type="file" id="resume-file-input" accept=".pdf,.txt" style="display: none;">
+              <input type="file" id="resume-file-input" accept=".pdf,.txt" multiple style="display: none;">
             </div>
 
             <div class="form-row split">
@@ -141,6 +141,14 @@
             <i data-lucide="bar-chart-2"></i>
             <h2>Analysis Report</h2>
             <span class="report-status-badge" id="report-badge">Awaiting Input</span>
+          </div>
+
+          <!-- Candidate Selector Dropdown (Hidden until multiple profiles are uploaded) -->
+          <div class="candidate-selector-row" id="analyzer-candidate-selector" style="display:none; padding: 1rem 1.5rem; background-color: #f8fafc; border-bottom: 1px solid var(--border-color); align-items: center; gap: 1rem;">
+            <label for="analyzer-select-name" style="font-size: 0.825rem; font-weight: 700; color: #64748b; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.05em;">Active Profile:</label>
+            <select id="analyzer-select-name" style="flex: 1; padding: 0.6rem; border: 1.5px solid var(--border-color); border-radius: var(--radius-sm); font-size: 0.9rem; background-color: #ffffff; cursor: pointer; font-weight: 600; color: #334155;">
+              <!-- Dynamically populated options -->
+            </select>
           </div>
 
           <!-- Empty State -->
@@ -393,10 +401,24 @@
     <!-- TAB 3: HR SHORTLIST VIEW -->
     <section class="tab-content" id="tab-shortlist">
       <div class="panel full-width">
-        <div class="panel-header">
+        <div class="panel-header" style="display: flex; align-items: center; flex-wrap: wrap; gap: 1rem;">
           <i data-lucide="users"></i>
-          <h2>Graphura Candidate Screening Dashboard</h2>
-          <button type="button" class="btn-secondary" id="clear-shortlist-btn" style="padding: 0.5rem 1rem; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 0.35rem; margin-right: 1rem; height: auto;">
+          <h2 style="font-size: 1.15rem; font-weight: 700; color: #1e293b; flex: 1; margin: 0;">Graphura Candidate Screening Dashboard</h2>
+          
+          <!-- Filter Dropdown -->
+          <div class="shortlist-filter-row" style="display: flex; align-items: center; gap: 0.5rem;">
+            <label for="shortlist-filter-role" style="font-size: 0.825rem; font-weight: 700; color: #64748b; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.05em;">Filter Pathway:</label>
+            <select id="shortlist-filter-role" style="padding: 0.5rem 0.85rem; border: 1.5px solid var(--border-color); border-radius: var(--radius-sm); font-size: 0.85rem; background-color: #ffffff; cursor: pointer; font-weight: 600; color: #334155;">
+              <option value="All">All Intern Pathways</option>
+              <option value="Data Analytics Intern">Data Analytics Intern</option>
+              <option value="Web Development Intern">Web Development Intern</option>
+              <option value="Digital Marketing Intern">Digital Marketing Intern</option>
+              <option value="Graphic Design Intern">Graphic Design Intern</option>
+              <option value="HR / Operations Intern">HR / Operations Intern</option>
+            </select>
+          </div>
+          
+          <button type="button" class="btn-secondary" id="clear-shortlist-btn" style="padding: 0.5rem 1rem; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 0.35rem; height: auto;">
             <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> Clear List
           </button>
           <span class="badge-active">Active Campaign</span>
