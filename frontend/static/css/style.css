@@ -1,0 +1,298 @@
+/* ===========================================================
+   Tokens
+   =========================================================== */
+:root {
+  --paper:     #F4F2ED;
+  --ink:       #20242B;
+  --ink-soft:  #656C76;
+  --card:      #FFFFFF;
+  --card-edge: #DEDBD2;
+
+  --accent:       #2E4FE0;   /* indigo — primary CTA / role highlight */
+  --accent-soft:  #E7EAFB;
+  --accent-warm:  #D97B29;   /* burnt orange — secondary bars */
+
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body:    "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono:    "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+
+  --radius: 6px;
+}
+
+* { box-sizing: border-box; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+html, body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* ===========================================================
+   Header
+   =========================================================== */
+.site-header {
+  border-bottom: 1px solid var(--card-edge);
+  background: var(--paper);
+}
+
+.header-inner {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 2rem;
+}
+
+.tab {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 0.3rem 0.6rem;
+  border-radius: 3px;
+  margin-bottom: 1rem;
+}
+
+.header-inner h1 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.85rem;
+  line-height: 1.25;
+  margin: 0 0 0.6rem;
+  letter-spacing: -0.01em;
+}
+
+.header-inner p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+  max-width: 48ch;
+}
+
+/* ===========================================================
+   Layout
+   =========================================================== */
+.wrap {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+/* ===========================================================
+   Form card
+   =========================================================== */
+.card {
+  background: var(--card);
+  border: 1px solid var(--card-edge);
+  border-radius: var(--radius);
+  padding: 1.75rem;
+}
+
+.field {
+  margin-bottom: 1.15rem;
+}
+
+.field label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-soft);
+  margin-bottom: 0.4rem;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 0.98rem;
+  color: var(--ink);
+  border: 1px solid var(--card-edge);
+  border-radius: 4px;
+  padding: 0.65rem 0.8rem;
+  background: var(--paper);
+  resize: vertical;
+}
+
+.field input:focus,
+.field textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.btn-primary {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.95rem;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 0.75rem 1.5rem;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.btn-primary:hover { background: #263FBD; }
+.btn-primary:active { transform: translateY(1px); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-primary:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.hint {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.hint.is-error { color: #B3261E; }
+
+/* ===========================================================
+   Result — index card
+   =========================================================== */
+.result-section {
+  margin-top: 1.75rem;
+  animation: rise 0.25s ease;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.index-card {
+  position: relative;
+  background: var(--card);
+  border: 1px solid var(--card-edge);
+  border-top: 4px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 2rem 1.75rem 1.75rem;
+}
+
+.index-card-tab {
+  position: absolute;
+  top: -13px;
+  right: 1.5rem;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 0.25rem 0.6rem;
+  border-radius: 3px;
+}
+
+.result-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-soft);
+  margin: 0 0 0.35rem;
+}
+
+.result-role {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.9rem;
+  margin: 0 0 0.3rem;
+  color: var(--ink);
+}
+
+.result-confidence {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--accent);
+  margin: 0 0 1.4rem;
+}
+
+.rank-list {
+  display: grid;
+  gap: 0.65rem;
+  border-top: 1px dashed var(--card-edge);
+  padding-top: 1.2rem;
+}
+
+.rank-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.rank-name {
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+
+.rank-score {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.rank-track {
+  grid-column: 1 / -1;
+  height: 6px;
+  background: var(--paper);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.rank-fill {
+  height: 100%;
+  background: var(--accent-warm);
+}
+
+.rank-row:first-child .rank-fill { background: var(--accent); }
+
+/* ===========================================================
+   Status / footer
+   =========================================================== */
+.status-line {
+  margin-top: 1.5rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  min-height: 1.2em;
+}
+
+.status-line.is-error { color: #B3261E; }
+
+.site-footer {
+  text-align: center;
+  padding: 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+/* ===========================================================
+   Small screens
+   =========================================================== */
+@media (max-width: 480px) {
+  .result-role { font-size: 1.5rem; }
+}
