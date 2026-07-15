@@ -206,7 +206,29 @@ function calculateRuleBasedMatching(skillsText, educationText, experienceText, p
 // ---------------------------------------------------------------------------
 // Render Results
 // ---------------------------------------------------------------------------
+let currentlyAnalyzedCandidate = null;
+
 function renderReport(candidateName, aiData, ruleData) {
+  // Store currently analyzed context
+  currentlyAnalyzedCandidate = {
+    name: candidateName,
+    aiData: aiData,
+    ruleData: ruleData,
+    education: document.getElementById("education").value.trim(),
+    experience: document.getElementById("experience").value.trim(),
+    skills: document.getElementById("skills").value.trim(),
+    projects: document.getElementById("projects").value.trim(),
+    certificates: document.getElementById("certificates").value.trim()
+  };
+
+  // Reset Shortlist button visual state
+  const addBtn = document.getElementById("add-to-shortlist-btn");
+  if (addBtn) {
+    addBtn.innerHTML = `<i data-lucide="user-plus"></i> Shortlist`;
+    addBtn.disabled = false;
+    lucide.createIcons();
+  }
+
   // Set candidate meta
   resCandidateName.textContent = candidateName;
   resAvatar.textContent = candidateName.charAt(0).toUpperCase();
@@ -1080,7 +1102,12 @@ function renderBatchScreenResults() {
               ${escapeHtml(c.skills || "None")}
             </td>
             <td>
-              <button class="btn-table-action" onclick="loadBatchCandidate(${idx})">Load Profiler</button>
+              <div style="display:flex; gap:0.35rem;">
+                <button class="btn-table-action" onclick="loadBatchCandidate(${idx})">Load Profiler</button>
+                <button class="btn-table-action" id="batch-shortlist-btn-${idx}" style="color:#0284c7; border-color:#93c5fd; background-color:#f0f9ff;" onclick="shortlistBatchCandidate(${idx})">
+                  <i data-lucide="user-plus" style="width:12px; height:12px; display:inline-block;"></i> Shortlist
+                </button>
+              </div>
             </td>
           </tr>
         `;
@@ -1124,5 +1151,262 @@ window.loadBatchCandidate = function(index) {
     form.dispatchEvent(new Event('submit'));
   }, 100);
 };
+
+// ---------------------------------------------------------------------------
+// Shortlist State & Management Functions
+// ---------------------------------------------------------------------------
+const DEFAULT_SHORTLIST = [
+  {
+    name: "Aarav Sharma",
+    aiPredicted: "Data Analyst",
+    aiConfidence: 0.88,
+    bestRuleRole: "Data Analytics Intern",
+    bestRuleScore: 90,
+    category: "Strong Fit",
+    fullProfile: MOCK_PROFILES["Aarav"]
+  },
+  {
+    name: "Priya Patel",
+    aiPredicted: "Front-end Developer",
+    aiConfidence: 0.74,
+    bestRuleRole: "Web Development Intern",
+    bestRuleScore: 80,
+    category: "Strong Fit",
+    fullProfile: MOCK_PROFILES["Priya"]
+  },
+  {
+    name: "Vikram Malhotra",
+    aiPredicted: "Digital Marketing",
+    aiConfidence: 0.91,
+    bestRuleRole: "Digital Marketing Intern",
+    bestRuleScore: 75,
+    category: "Strong Fit",
+    fullProfile: MOCK_PROFILES["Vikram"]
+  },
+  {
+    name: "Karan Johar",
+    aiPredicted: "Java Developer",
+    aiConfidence: 0.41,
+    bestRuleRole: "Web Development Intern",
+    bestRuleScore: 50,
+    category: "Moderate Fit",
+    fullProfile: MOCK_PROFILES["Karan"]
+  },
+  {
+    name: "Neha Gupta",
+    aiPredicted: "HR Executive",
+    aiConfidence: 0.82,
+    bestRuleRole: "HR/Operations Intern",
+    bestRuleScore: 87,
+    category: "Strong Fit",
+    fullProfile: MOCK_PROFILES["Neha"]
+  },
+  {
+    name: "Samir Sen",
+    aiPredicted: "DevOps Engineer",
+    aiConfidence: 0.32,
+    bestRuleRole: "Web Development Intern",
+    bestRuleScore: 30,
+    category: "Low Fit",
+    fullProfile: MOCK_PROFILES["Samir"]
+  }
+];
+
+let hrShortlist = [];
+
+function loadShortlist() {
+  const stored = localStorage.getItem("graphura_hr_shortlist");
+  if (stored) {
+    try {
+      hrShortlist = JSON.parse(stored);
+    } catch (e) {
+      console.error("Failed to load shortlist, resetting.", e);
+      hrShortlist = [...DEFAULT_SHORTLIST];
+    }
+  } else {
+    hrShortlist = [...DEFAULT_SHORTLIST];
+    saveShortlist();
+  }
+}
+
+function saveShortlist() {
+  localStorage.setItem("graphura_hr_shortlist", JSON.stringify(hrShortlist));
+}
+
+function renderShortlistTable() {
+  const tableBody = document.getElementById("shortlist-table-body");
+  if (!tableBody) return;
+
+  if (hrShortlist.length === 0) {
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align:center; color:#64748b; padding: 2rem;">No candidates currently shortlisted. Run match analyses to shortlist applicants.</td>
+      </tr>
+    `;
+    return;
+  }
+
+  tableBody.innerHTML = hrShortlist
+    .map((c, idx) => {
+      let catClass = "low-fit";
+      if (c.category === "Strong Fit") catClass = "strong-fit";
+      if (c.category === "Moderate Fit") catClass = "moderate-fit";
+
+      const scorePercent = `${c.bestRuleScore}%`;
+      const aiConfStr = c.aiConfidence > 0 ? `${Math.round(c.aiConfidence * 100)}%` : "N/A";
+
+      return `
+        <tr>
+          <td><strong>${escapeHtml(c.name)}</strong></td>
+          <td>
+            <span class="badge-conf" style="background-color:#f1f5f9; color:#475569; padding:0.15rem 0.4rem; border-radius:4px; font-size:0.75rem;">
+              ${escapeHtml(c.aiPredicted)}
+            </span>
+          </td>
+          <td><span class="badge-conf">${aiConfStr}</span></td>
+          <td>${escapeHtml(c.bestRuleRole)}</td>
+          <td><span class="badge-score font-mono">${scorePercent}</span></td>
+          <td><span class="fit-tag ${catClass}">${c.category}</span></td>
+          <td>
+            <div style="display:flex; gap:0.5rem;">
+              <button class="btn-table-action" onclick="loadShortlistCandidate(${idx})">Load Profiler</button>
+              <button class="btn-table-action" style="color:#ef4444; border-color:#fca5a5; background-color:#fff5f5;" onclick="removeShortlistCandidate(${idx})">
+                <i data-lucide="trash-2" style="width:12px; height:12px; display:inline-block; vertical-align:middle;"></i> Remove
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  lucide.createIcons();
+}
+
+window.loadShortlistCandidate = function(idx) {
+  const c = hrShortlist[idx];
+  if (!c || !c.fullProfile) return;
+
+  // Switch to Analyzer Tab
+  const analyzerTab = document.querySelector('[data-tab="analyzer"]');
+  if (analyzerTab) {
+    analyzerTab.click();
+  }
+
+  // Populate form
+  const profile = c.fullProfile;
+  document.getElementById("candidate-name").value = c.name;
+  document.getElementById("education").value = profile.education || "";
+  document.getElementById("experience").value = profile.experience || "";
+  document.getElementById("skills").value = profile.skills || "";
+  document.getElementById("projects").value = profile.projects || "";
+  document.getElementById("certificates").value = profile.certificates || "";
+
+  // Trigger Submit
+  setTimeout(() => {
+    form.dispatchEvent(new Event('submit'));
+  }, 100);
+};
+
+window.removeShortlistCandidate = function(idx) {
+  if (confirm(`Are you sure you want to remove ${hrShortlist[idx].name} from the shortlist?`)) {
+    hrShortlist.splice(idx, 1);
+    saveShortlist();
+    renderShortlistTable();
+  }
+};
+
+window.shortlistBatchCandidate = function(idx) {
+  const c = batchCandidatesList[idx];
+  if (!c) return;
+
+  const alreadyExists = hrShortlist.some(item => item.name.toLowerCase() === c.name.toLowerCase());
+  if (alreadyExists) {
+    alert(`${c.name} is already in the shortlist!`);
+    return;
+  }
+
+  hrShortlist.push({
+    name: c.name,
+    aiPredicted: c.aiPredicted,
+    aiConfidence: c.aiConfidence,
+    bestRuleRole: batchTargetRole.value, // Target pathway
+    bestRuleScore: c.score,
+    category: c.category,
+    fullProfile: c.fullProfile
+  });
+
+  saveShortlist();
+  renderShortlistTable();
+
+  // Update button state visually
+  const btn = document.getElementById(`batch-shortlist-btn-${idx}`);
+  if (btn) {
+    btn.innerHTML = `<i data-lucide="check" style="width:12px; height:12px;"></i> Shortlisted`;
+    btn.disabled = true;
+    btn.style.color = "#10b981";
+    btn.style.borderColor = "#a7f3d0";
+    btn.style.backgroundColor = "#ecfdf5";
+    lucide.createIcons();
+  }
+};
+
+// Event Listeners for shortlisting actions
+const addToShortlistBtn = document.getElementById("add-to-shortlist-btn");
+const clearShortlistBtn = document.getElementById("clear-shortlist-btn");
+
+if (addToShortlistBtn) {
+  addToShortlistBtn.addEventListener("click", () => {
+    if (!currentlyAnalyzedCandidate) return;
+    
+    // Check if already in shortlist
+    const alreadyExists = hrShortlist.some(c => c.name.toLowerCase() === currentlyAnalyzedCandidate.name.toLowerCase());
+    if (alreadyExists) {
+      alert(`${currentlyAnalyzedCandidate.name} is already in the shortlist!`);
+      return;
+    }
+    
+    const bestRule = currentlyAnalyzedCandidate.ruleData[0] || { role: "N/A", score: 0, category: "Low Fit" };
+    
+    hrShortlist.push({
+      name: currentlyAnalyzedCandidate.name,
+      aiPredicted: currentlyAnalyzedCandidate.aiData.predicted_role,
+      aiConfidence: currentlyAnalyzedCandidate.aiData.confidence,
+      bestRuleRole: bestRule.role,
+      bestRuleScore: bestRule.score,
+      category: bestRule.category,
+      fullProfile: {
+        education: currentlyAnalyzedCandidate.education,
+        experience: currentlyAnalyzedCandidate.experience,
+        skills: currentlyAnalyzedCandidate.skills,
+        projects: currentlyAnalyzedCandidate.projects,
+        certificates: currentlyAnalyzedCandidate.certificates
+      }
+    });
+    
+    saveShortlist();
+    renderShortlistTable();
+    
+    // Change state visually
+    addToShortlistBtn.innerHTML = `<i data-lucide="check"></i> Shortlisted!`;
+    addToShortlistBtn.disabled = true;
+    lucide.createIcons();
+  });
+}
+
+if (clearShortlistBtn) {
+  clearShortlistBtn.addEventListener("click", () => {
+    if (confirm("Are you sure you want to clear the entire shortlist?")) {
+      hrShortlist = [];
+      saveShortlist();
+      renderShortlistTable();
+    }
+  });
+}
+
+// Initialize HR Shortlist on startup
+loadShortlist();
+renderShortlistTable();
+
 
 

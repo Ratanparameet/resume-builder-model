@@ -201,9 +201,14 @@
               <div class="rec-icon-wrapper">
                 <i data-lucide="award" id="rec-icon"></i>
               </div>
-              <div class="rec-text-wrapper">
+              <div class="rec-text-wrapper" style="flex: 1;">
                 <h5>Recruiter Placement Advice</h5>
                 <p id="rec-advice">Analyzing data...</p>
+              </div>
+              <div class="rec-action-wrapper" style="display: flex; align-items: center; margin-left: 1rem;">
+                <button type="button" class="btn-primary" id="add-to-shortlist-btn" style="padding: 0.6rem 1rem; font-size: 0.85rem; box-shadow: none;">
+                  <i data-lucide="user-plus"></i> Shortlist
+                </button>
               </div>
             </div>
 
@@ -391,6 +396,9 @@
         <div class="panel-header">
           <i data-lucide="users"></i>
           <h2>Graphura Candidate Screening Dashboard</h2>
+          <button type="button" class="btn-secondary" id="clear-shortlist-btn" style="padding: 0.5rem 1rem; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 0.35rem; margin-right: 1rem; height: auto;">
+            <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> Clear List
+          </button>
           <span class="badge-active">Active Campaign</span>
         </div>
         <p class="section-desc">A summary view of shortlisted applicants, mapping matching scores across both engines to streamline hiring decisions.</p>
@@ -405,64 +413,11 @@
                 <th>Best Rule Fit</th>
                 <th>Rule Score</th>
                 <th>Fit Category</th>
-                <th>Action</th>
+                <th>Actions</th>
               </tr>
             </thead>
-            <tbody>
-              <tr>
-                <td><strong>Aarav Sharma</strong></td>
-                <td>Data Analyst</td>
-                <td><span class="badge-conf">88%</span></td>
-                <td>Data Analytics Intern</td>
-                <td><span class="badge-score font-mono">90%</span></td>
-                <td><span class="fit-tag strong-fit">Strong Fit</span></td>
-                <td><button class="btn-table-action" onclick="loadMockCandidate('Aarav')">Load Profiler</button></td>
-              </tr>
-              <tr>
-                <td><strong>Priya Patel</strong></td>
-                <td>Front-end Developer</td>
-                <td><span class="badge-conf">74%</span></td>
-                <td>Web Development Intern</td>
-                <td><span class="badge-score font-mono">80%</span></td>
-                <td><span class="fit-tag strong-fit">Strong Fit</span></td>
-                <td><button class="btn-table-action" onclick="loadMockCandidate('Priya')">Load Profiler</button></td>
-              </tr>
-              <tr>
-                <td><strong>Vikram Malhotra</strong></td>
-                <td>Digital Marketing</td>
-                <td><span class="badge-conf">91%</span></td>
-                <td>Digital Marketing Intern</td>
-                <td><span class="badge-score font-mono">75%</span></td>
-                <td><span class="fit-tag strong-fit">Strong Fit</span></td>
-                <td><button class="btn-table-action" onclick="loadMockCandidate('Vikram')">Load Profiler</button></td>
-              </tr>
-              <tr>
-                <td><strong>Karan Johar</strong></td>
-                <td>Java Developer</td>
-                <td><span class="badge-conf">41%</span></td>
-                <td>Web Development Intern</td>
-                <td><span class="badge-score font-mono">50%</span></td>
-                <td><span class="fit-tag moderate-fit">Moderate Fit</span></td>
-                <td><button class="btn-table-action" onclick="loadMockCandidate('Karan')">Load Profiler</button></td>
-              </tr>
-              <tr>
-                <td><strong>Neha Gupta</strong></td>
-                <td>HR Executive</td>
-                <td><span class="badge-conf">82%</span></td>
-                <td>HR/Operations Intern</td>
-                <td><span class="badge-score font-mono">87%</span></td>
-                <td><span class="fit-tag strong-fit">Strong Fit</span></td>
-                <td><button class="btn-table-action" onclick="loadMockCandidate('Neha')">Load Profiler</button></td>
-              </tr>
-              <tr>
-                <td><strong>Samir Sen</strong></td>
-                <td>DevOps Engineer</td>
-                <td><span class="badge-conf">32%</span></td>
-                <td>Web Development Intern</td>
-                <td><span class="badge-score font-mono">30%</span></td>
-                <td><span class="fit-tag low-fit">Low Fit</span></td>
-                <td><button class="btn-table-action" onclick="loadMockCandidate('Samir')">Load Profiler</button></td>
-              </tr>
+            <tbody id="shortlist-table-body">
+              <!-- Dynamically populated shortlist items -->
             </tbody>
           </table>
         </div>
