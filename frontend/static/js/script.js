@@ -474,7 +474,7 @@ async function handleUploadedFile(file) {
   // Visual state change
   uploadZone.classList.add("parsing");
   const pTag = uploadZone.querySelector("p");
-  const icon = uploadZone.querySelector("i");
+  const icon = uploadZone.querySelector(".upload-icon");
   pTag.innerHTML = `Extracting data from <strong style="color:var(--accent-gold);">${file.name}</strong>...`;
   icon.setAttribute("data-lucide", "loader-2");
   icon.classList.add("animate-spin");
@@ -544,7 +544,7 @@ function processExtractedText(text) {
 function resetUploadZone() {
   uploadZone.classList.remove("parsing");
   const pTag = uploadZone.querySelector("p");
-  const icon = uploadZone.querySelector("i");
+  const icon = uploadZone.querySelector(".upload-icon");
   pTag.innerHTML = `Drag & drop candidate resume (PDF or TXT) or <span class="browse-link">browse</span>`;
   icon.setAttribute("data-lucide", "upload-cloud");
   icon.classList.remove("animate-spin");
