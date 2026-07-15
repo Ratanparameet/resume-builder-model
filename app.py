@@ -111,6 +111,54 @@ def build_combined_text(education, experience, projects, skills, certificates):
 
 
 # ---------------------------------------------------------------------------
+# Decision Engine — combines AI + Rule-Based scores into a final verdict
+# ---------------------------------------------------------------------------
+def decision_engine(ai_role, ai_confidence, rule_role, rule_score):
+    """
+    Blends AI confidence (60%) and rule-based score (40%) into an overall score.
+    Picks the final role based on which engine is more confident.
+    """
+    overall = round((ai_confidence * 0.60) + (rule_score * 0.40), 2)
+
+    if ai_role == rule_role:
+        final_role = ai_role
+        explanation = "AI prediction and Rule-Based prediction matched."
+    else:
+        if ai_confidence >= 60:
+            final_role = ai_role
+            explanation = "AI confidence is higher, so AI prediction is selected."
+        elif rule_score >= 75:
+            final_role = rule_role
+            explanation = "Rule-Based score is stronger, so Rule prediction is selected."
+        else:
+            final_role = ai_role
+            explanation = (
+                "Predictions differ. AI prediction selected because "
+                "rule score is not high enough."
+            )
+
+    if overall >= 90:
+        match_level = "Excellent Match"
+    elif overall >= 75:
+        match_level = "Strong Match"
+    elif overall >= 60:
+        match_level = "Moderate Match"
+    else:
+        match_level = "Low Match"
+
+    return {
+        "ai_role": ai_role,
+        "rule_role": rule_role,
+        "final_role": final_role,
+        "ai_confidence": round(ai_confidence, 2),
+        "rule_score": round(rule_score, 2),
+        "overall_score": overall,
+        "match_level": match_level,
+        "explanation": explanation,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 @app.route("/", methods=["GET"])
@@ -189,6 +237,13 @@ def predict_role():
             response["top_roles"] = [
                 {"role": str(r), "score": round(float(s), 4)} for r, s in ranked[:3]
             ]
+
+        # Run the Decision Engine to blend AI + rule-based scores
+        ai_conf_pct = response.get("confidence", 0) * 100
+        rule_role = str(predicted_role)   # Rule engine uses same role as fallback
+        rule_score = 80.0                 # Default rule score (client-side engine sets real score)
+        decision = decision_engine(str(predicted_role), ai_conf_pct, rule_role, rule_score)
+        response.update(decision)
 
         return jsonify(response), 200
 

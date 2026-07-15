@@ -107,6 +107,37 @@ def build_combined_text(education, experience, projects, skills, certificates):
 
 
 # ---------------------------------------------------------------------------
+# Decision Engine
+# ---------------------------------------------------------------------------
+def decision_engine(ai_role, ai_confidence, rule_role, rule_score):
+    overall = round((ai_confidence * 0.60) + (rule_score * 0.40), 2)
+    if ai_role == rule_role:
+        final_role = ai_role
+        explanation = "AI prediction and Rule-Based prediction matched."
+    else:
+        if ai_confidence >= 60:
+            final_role = ai_role
+            explanation = "AI confidence is higher, so AI prediction is selected."
+        elif rule_score >= 75:
+            final_role = rule_role
+            explanation = "Rule-Based score is stronger, so Rule prediction is selected."
+        else:
+            final_role = ai_role
+            explanation = "Predictions differ. AI prediction selected because rule score is not high enough."
+    if overall >= 90:
+        match_level="Excellent Match"
+    elif overall>=75:
+        match_level="Strong Match"
+    elif overall>=60:
+        match_level="Moderate Match"
+    else:
+        match_level="Low Match"
+    return {"ai_role":ai_role,"rule_role":rule_role,"final_role":final_role,
+            "ai_confidence":round(ai_confidence,2),"rule_score":round(rule_score,2),
+            "overall_score":overall,"match_level":match_level,"explanation":explanation}
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 @app.route("/api/health", methods=["GET"])
@@ -157,6 +188,10 @@ def predict_role():
 
         response = {"predicted_role": str(predicted_role)}
 
+        # TODO: Replace with your real Rule Engine
+        rule_role = str(predicted_role)
+        rule_score = 80.0
+
         # LinearSVC has no predict_proba — approximate confidence via softmax
         # over the decision-function margins instead.
         if hasattr(model, "decision_function"):
@@ -181,6 +216,9 @@ def predict_role():
                 {"role": str(r), "score": round(float(s), 4)} for r, s in ranked[:3]
             ]
 
+        ai_conf = response.get("confidence",0)*100
+        decision = decision_engine(str(predicted_role), ai_conf, rule_role, rule_score)
+        response.update(decision)
         return jsonify(response), 200
 
     except Exception:

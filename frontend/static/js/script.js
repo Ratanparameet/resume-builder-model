@@ -935,6 +935,36 @@ function formattedSkill(skillName) {
 }
 
 // ---------------------------------------------------------------------------
+// Decision Engine (JS mirror of backend logic — blends AI 60% + Rule 40%)
+// ---------------------------------------------------------------------------
+function computeDecisionEngine(aiRole, aiConfPct, ruleRole, ruleScore) {
+  const overall = Math.round((aiConfPct * 0.60) + (ruleScore * 0.40));
+  let finalRole, explanation;
+
+  if (aiRole === ruleRole) {
+    finalRole = aiRole;
+    explanation = "AI & Rule-Based predictions matched.";
+  } else if (aiConfPct >= 60) {
+    finalRole = aiRole;
+    explanation = "AI confidence is higher.";
+  } else if (ruleScore >= 75) {
+    finalRole = ruleRole;
+    explanation = "Rule-Based score is stronger.";
+  } else {
+    finalRole = aiRole;
+    explanation = "AI prediction selected (rule score insufficient).";
+  }
+
+  let matchLevel;
+  if (overall >= 90)      matchLevel = "Excellent Match";
+  else if (overall >= 75) matchLevel = "Strong Match";
+  else if (overall >= 60) matchLevel = "Moderate Match";
+  else                    matchLevel = "Low Match";
+
+  return { finalRole, overall, matchLevel, explanation, aiRole, ruleRole };
+}
+
+// ---------------------------------------------------------------------------
 // Batch Candidate Screening Engine (Multiple Resume Upload)
 // ---------------------------------------------------------------------------
 const batchDropZone = document.getElementById("batch-drop-zone");
@@ -1180,10 +1210,22 @@ function renderBatchScreenResults() {
         let catClass = "low-fit";
         if (c.category === "Strong Fit") catClass = "strong-fit";
         if (c.category === "Moderate Fit") catClass = "moderate-fit";
-        
+
         const scorePercent = `${c.score}%`;
-        const aiConfStr = c.aiConfidence > 0 ? `${Math.round(c.aiConfidence * 100)}%` : "N/A";
-        
+        const aiConfPct = c.aiConfidence > 0 ? Math.round(c.aiConfidence * 100) : 0;
+
+        // Merge AI + Rule into Decision Engine output
+        const decision = computeDecisionEngine(
+          c.aiPredicted || "Unknown",
+          aiConfPct,
+          batchTargetRole.value,
+          c.score
+        );
+
+        let mlvlClass = "low-fit";
+        if (decision.matchLevel === "Excellent Match" || decision.matchLevel === "Strong Match") mlvlClass = "strong-fit";
+        else if (decision.matchLevel === "Moderate Match") mlvlClass = "moderate-fit";
+
         return `
           <tr id="batch-row-${idx}">
             <td><strong>#${idx + 1}</strong></td>
@@ -1191,10 +1233,10 @@ function renderBatchScreenResults() {
             <td><span class="badge-score font-mono">${scorePercent}</span></td>
             <td><span class="fit-tag ${catClass}">${c.category}</span></td>
             <td>
-              <span class="badge-conf" style="background-color:#fdf7f8; color:#7a2735; padding:0.15rem 0.4rem; border-radius:4px; font-size:0.75rem;">
-                ${escapeHtml(c.aiPredicted)}
+              <strong style="font-size:0.88rem; color:#1e293b;">${escapeHtml(decision.finalRole)}</strong><br>
+              <span style="font-size:0.7rem; color:#94a3b8; font-family:var(--font-mono);">
+                AI: ${escapeHtml(decision.aiRole)} | Rule: ${escapeHtml(decision.ruleRole)}
               </span>
-              <span style="font-size:0.75rem; color:#64748b; font-family:var(--font-mono); margin-left:0.25rem;">(${aiConfStr})</span>
             </td>
             <td style="max-width:220px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(c.skills)}">
               ${escapeHtml(c.skills || "None")}
@@ -1410,27 +1452,39 @@ function renderShortlistTable() {
 
   tableBody.innerHTML = processedList
     .map((c, idx) => {
-      let catClass = "low-fit";
-      if (c.displayCategory === "Strong Fit") catClass = "strong-fit";
-      if (c.displayCategory === "Moderate Fit") catClass = "moderate-fit";
+      // Compute Decision Engine result from stored AI + Rule data
+      const aiConfPct = c.aiConfidence > 0 ? Math.round(c.aiConfidence * 100) : 0;
+      const ruleScore = c.displayScore || c.bestRuleScore || 0;
+      const ruleRole  = c.displayRole  || c.bestRuleRole  || "N/A";
+      const decision  = computeDecisionEngine(
+        c.aiPredicted || "Unknown",
+        aiConfPct,
+        ruleRole,
+        ruleScore
+      );
 
-      const scorePercent = `${c.displayScore}%`;
-      const aiConfStr = c.aiConfidence > 0 ? `${Math.round(c.aiConfidence * 100)}%` : "N/A";
-      
+      let mlvlClass = "low-fit";
+      if (decision.matchLevel === "Excellent Match" || decision.matchLevel === "Strong Match") mlvlClass = "strong-fit";
+      else if (decision.matchLevel === "Moderate Match") mlvlClass = "moderate-fit";
+
       const originalIndex = hrShortlist.findIndex(item => item.name === c.name);
 
       return `
         <tr>
           <td><strong>${escapeHtml(c.name)}</strong></td>
           <td>
-            <span class="badge-conf" style="background-color:#f1f5f9; color:#475569; padding:0.15rem 0.4rem; border-radius:4px; font-size:0.75rem;">
-              ${escapeHtml(c.aiPredicted)}
-            </span>
+            <strong style="font-size:0.88rem; color:#1e293b;">${escapeHtml(decision.finalRole)}</strong><br>
+            <span style="font-size:0.7rem; color:#94a3b8; font-family:var(--font-mono);">
+              AI: ${escapeHtml(decision.aiRole)} | Rule: ${escapeHtml(decision.ruleRole)}
+            </span><br>
+            <span style="font-size:0.68rem; color:#cbd5e1; font-style:italic;">${escapeHtml(decision.explanation)}</span>
           </td>
-          <td><span class="badge-conf">${aiConfStr}</span></td>
-          <td>${escapeHtml(c.displayRole)}</td>
-          <td><span class="badge-score font-mono">${scorePercent}</span></td>
-          <td><span class="fit-tag ${catClass}">${c.displayCategory}</span></td>
+          <td>
+            <span class="badge-score font-mono">${decision.overall}%</span>
+          </td>
+          <td>
+            <span class="fit-tag ${mlvlClass}">${decision.matchLevel}</span>
+          </td>
           <td>
             <div style="display:flex; gap:0.5rem;">
               <button class="btn-table-action" onclick="loadShortlistCandidateByName('${escapeHtml(c.name)}')">Load Profiler</button>
