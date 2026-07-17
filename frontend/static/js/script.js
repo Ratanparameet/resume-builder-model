@@ -1233,10 +1233,7 @@ function renderBatchScreenResults() {
             <td><span class="badge-score font-mono">${scorePercent}</span></td>
             <td><span class="fit-tag ${catClass}">${c.category}</span></td>
             <td>
-              <strong style="font-size:0.88rem; color:#1e293b;">${escapeHtml(decision.finalRole)}</strong><br>
-              <span style="font-size:0.7rem; color:#94a3b8; font-family:var(--font-mono);">
-                AI: ${escapeHtml(decision.aiRole)} | Rule: ${escapeHtml(decision.ruleRole)}
-              </span>
+              <strong style="font-size:0.88rem; color:#1e293b;">${escapeHtml(decision.finalRole)}</strong>
             </td>
             <td style="max-width:220px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(c.skills)}">
               ${escapeHtml(c.skills || "None")}
@@ -1473,11 +1470,7 @@ function renderShortlistTable() {
         <tr>
           <td><strong>${escapeHtml(c.name)}</strong></td>
           <td>
-            <strong style="font-size:0.88rem; color:#1e293b;">${escapeHtml(decision.finalRole)}</strong><br>
-            <span style="font-size:0.7rem; color:#94a3b8; font-family:var(--font-mono);">
-              AI: ${escapeHtml(decision.aiRole)} | Rule: ${escapeHtml(decision.ruleRole)}
-            </span><br>
-            <span style="font-size:0.68rem; color:#cbd5e1; font-style:italic;">${escapeHtml(decision.explanation)}</span>
+            <strong style="font-size:0.88rem; color:#1e293b;">${escapeHtml(decision.finalRole)}</strong>
           </td>
           <td>
             <span class="badge-score font-mono">${decision.overall}%</span>
