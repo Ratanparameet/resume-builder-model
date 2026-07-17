@@ -154,6 +154,24 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+async function fetchWithTimeout(resource, options = {}) {
+  const { timeout = 5000 } = options;
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(resource, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Rule-Based Calculator (Client-side Engine)
 // ---------------------------------------------------------------------------
@@ -355,10 +373,11 @@ form.addEventListener("submit", async (e) => {
   try {
     // Run concurrent calculations
     // 1. AI/ML Prediction
-    const res = await fetch(`${API_BASE_URL}/api/predict-role`, {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/predict-role`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      timeout: 5000
     });
     
     const aiData = await res.json();
@@ -549,10 +568,11 @@ async function handleUploadedFiles(files) {
           certificates: parsed.certificates
         };
 
-        const res = await fetch(`${API_BASE_URL}/api/predict-role`, {
+        const res = await fetchWithTimeout(`${API_BASE_URL}/api/predict-role`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
+          timeout: 5000
         });
 
         if (res.ok) {
@@ -965,6 +985,212 @@ function computeDecisionEngine(aiRole, aiConfPct, ruleRole, ruleScore) {
 }
 
 // ---------------------------------------------------------------------------
+// FRONTEND VISUALIZATION LAYER
+// Score Normalization: backend values are used as-is for logic;
+// display scores are ONLY for UI rendering — never sent to backend.
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalize backend overall score into a more readable display score.
+ * Backend remains completely unchanged.
+ */
+function getDisplayScore(backendScore) {
+  const s = Number(backendScore) || 0;
+  if (s <= 30) return 55;
+  if (s <= 40) return Math.round(s + 35);
+  if (s <= 50) return Math.round(s + 33);
+  if (s <= 60) return Math.round(s + 30);
+  if (s <= 70) return Math.round(s + 25);
+  return Math.min(Math.round(s + 15), 100);
+}
+
+/** Match level based on DISPLAY score */
+function getDisplayMatchLevel(displayScore) {
+  if (displayScore >= 85) return "Excellent Match";
+  if (displayScore >= 70) return "Strong Match";
+  if (displayScore >= 50) return "Moderate Match";
+  return "Low Match";
+}
+
+function getMatchIcon(level) {
+  return { "Excellent Match": "⭐", "Strong Match": "🟢", "Moderate Match": "🟡", "Low Match": "🔴" }[level] || "🔴";
+}
+
+function getMatchBadgeClass(level) {
+  return { "Excellent Match": "excellent", "Strong Match": "strong", "Moderate Match": "moderate", "Low Match": "low" }[level] || "low";
+}
+
+function getProgressGradient(level) {
+  return {
+    "Excellent Match": "linear-gradient(90deg,#00b09b,#00d4aa)",
+    "Strong Match":    "linear-gradient(90deg,#56ab2f,#a8e063)",
+    "Moderate Match":  "linear-gradient(90deg,#f7971e,#ffd200)",
+    "Low Match":       "linear-gradient(90deg,#f85032,#e73827)"
+  }[level] || "linear-gradient(90deg,#f85032,#e73827)";
+}
+
+function getRecommendation(level) {
+  return {
+    "Excellent Match": "Candidate strongly matches this role. Recommended for Interview.",
+    "Strong Match":    "Candidate has very good matching skills. Recommended for Technical Round.",
+    "Moderate Match":  "Candidate partially matches. Additional evaluation recommended.",
+    "Low Match":       "Candidate needs additional skills. Consider another suitable role."
+  }[level] || "";
+}
+
+/** Count-up animation for a DOM element */
+function animateCountUp(el, target, duration = 900, suffix = "%") {
+  let startTime = null;
+  function step(ts) {
+    if (!startTime) startTime = ts;
+    const progress = Math.min((ts - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    el.textContent = Math.round(eased * target) + suffix;
+    if (progress < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+/** Build the animated score cell HTML */
+function buildScoreCell(backendScore) {
+  const disp = getDisplayScore(backendScore);
+  const level = getDisplayMatchLevel(disp);
+  const grad  = getProgressGradient(level);
+  return `
+    <div class="score-display-cell">
+      <div class="score-tooltip-wrap">
+        <span class="display-score-val" data-target="${disp}">0%</span>
+        <div class="score-progress-bar">
+          <div class="score-progress-fill" data-fill="${disp}" style="background:${grad};"></div>
+        </div>
+        <span class="score-tooltip-text">
+          This score is normalized only for better visualization.
+          The ML prediction and backend remain unchanged.
+        </span>
+      </div>
+    </div>
+  `;
+}
+
+/** Trigger count-up + progress bar animations for all score cells in DOM */
+function animateScoreCells() {
+  document.querySelectorAll(".display-score-val[data-target]").forEach(el => {
+    animateCountUp(el, parseInt(el.dataset.target));
+  });
+  setTimeout(() => {
+    document.querySelectorAll(".score-progress-fill[data-fill]").forEach(el => {
+      el.style.width = el.dataset.fill + "%";
+    });
+  }, 80);
+}
+
+// Chart instances (kept so we can destroy & rebuild on re-render)
+let matchLevelChartInst = null;
+let roleDistChartInst   = null;
+
+/** Draw / refresh Chart.js charts from the processed candidate list */
+function refreshDashboardCharts(processedList) {
+  if (typeof Chart === "undefined") return;
+
+  // ── Match Level Bar Chart ──
+  const mlCounts = { "Excellent Match": 0, "Strong Match": 0, "Moderate Match": 0, "Low Match": 0 };
+  processedList.forEach(c => {
+    const disp  = getDisplayScore(c._overallForChart || c.displayScore || 0);
+    const level = getDisplayMatchLevel(disp);
+    if (mlCounts[level] !== undefined) mlCounts[level]++;
+  });
+
+  const mlCanvas = document.getElementById("matchLevelChart");
+  if (mlCanvas) {
+    if (matchLevelChartInst) matchLevelChartInst.destroy();
+    matchLevelChartInst = new Chart(mlCanvas, {
+      type: "bar",
+      data: {
+        labels: ["⭐ Excellent", "🟢 Strong", "🟡 Moderate", "🔴 Low"],
+        datasets: [{
+          label: "Candidates",
+          data: Object.values(mlCounts),
+          backgroundColor: ["#C8F7E1", "#D8F5D0", "#FFF4CC", "#FFE5E5"],
+          borderColor:      ["#00695C", "#2E7D32", "#C67C00", "#D32F2F"],
+          borderWidth: 2,
+          borderRadius: 8,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: "rgba(0,0,0,0.04)" } },
+          x: { grid: { display: false } }
+        }
+      }
+    });
+  }
+
+  // ── Role Distribution Doughnut ──
+  const roleCounts = {};
+  processedList.forEach(c => {
+    const role = c._finalRoleForChart || c.displayRole || c.bestRuleRole || "Unknown";
+    roleCounts[role] = (roleCounts[role] || 0) + 1;
+  });
+  const roleLabels = Object.keys(roleCounts);
+  const roleData   = Object.values(roleCounts);
+  const palette    = ["#993445","#c45068","#00695C","#2E7D32","#C67C00","#0369a1","#7c3aed","#d97706"];
+
+  const rdCanvas = document.getElementById("roleDistChart");
+  if (rdCanvas) {
+    if (roleDistChartInst) roleDistChartInst.destroy();
+    roleDistChartInst = new Chart(rdCanvas, {
+      type: "doughnut",
+      data: {
+        labels: roleLabels,
+        datasets: [{
+          data: roleData,
+          backgroundColor: palette.slice(0, roleLabels.length),
+          borderWidth: 2,
+          hoverOffset: 10
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: "bottom", labels: { font: { size: 11 }, padding: 12, boxWidth: 14 } }
+        }
+      }
+    });
+  }
+}
+
+/** Update the 6-card summary panel */
+function updateSummaryPanel(processedList) {
+  let excellent = 0, strong = 0, moderate = 0, low = 0, totalDisp = 0;
+  processedList.forEach(c => {
+    const disp  = getDisplayScore(c._overallForChart || c.displayScore || 0);
+    const level = getDisplayMatchLevel(disp);
+    totalDisp += disp;
+    if (level === "Excellent Match") excellent++;
+    else if (level === "Strong Match") strong++;
+    else if (level === "Moderate Match") moderate++;
+    else low++;
+  });
+  const n = processedList.length;
+  const avg = n > 0 ? Math.round(totalDisp / n) : 0;
+
+  function setVal(id, val, suffix = "") {
+    const el = document.getElementById(id);
+    if (!el) return;
+    animateCountUp(el, Number(val), 700, suffix);
+  }
+
+  setVal("sum-total",     n,         "");
+  setVal("sum-excellent", excellent, "");
+  setVal("sum-strong",    strong,    "");
+  setVal("sum-moderate",  moderate,  "");
+  setVal("sum-low",       low,       "");
+  setVal("sum-avg",       avg,       "%");
+}
+
+// ---------------------------------------------------------------------------
 // Batch Candidate Screening Engine (Multiple Resume Upload)
 // ---------------------------------------------------------------------------
 const batchDropZone = document.getElementById("batch-drop-zone");
@@ -1080,10 +1306,11 @@ async function handleBatchFiles(files) {
           certificates: parsed.certificates
         };
 
-        const res = await fetch(`${API_BASE_URL}/api/predict-role`, {
+        const res = await fetchWithTimeout(`${API_BASE_URL}/api/predict-role`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
+          timeout: 5000
         });
 
         if (res.ok) {
@@ -1235,6 +1462,8 @@ function renderBatchScreenResults() {
             <td>
               <strong style="font-size:0.88rem; color:#1e293b;">${escapeHtml(decision.finalRole)}</strong>
             </td>
+            <td>${buildScoreCell(decision.overall)}</td>
+            <td><span class="match-badge ${getMatchBadgeClass(getDisplayMatchLevel(getDisplayScore(decision.overall)))}">${getMatchIcon(getDisplayMatchLevel(getDisplayScore(decision.overall)))} ${getDisplayMatchLevel(getDisplayScore(decision.overall))}</span></td>
             <td style="max-width:220px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(c.skills)}">
               ${escapeHtml(c.skills || "None")}
             </td>
@@ -1260,6 +1489,8 @@ function renderBatchScreenResults() {
     batchProgress.style.display = "none";
     batchResults.style.display = "block";
     lucide.createIcons();
+    // Animate score cells in batch results
+    setTimeout(() => animateScoreCells(), 50);
     
     // Scroll results table into view
     batchResults.scrollIntoView({ behavior: 'smooth' });
@@ -1430,8 +1661,36 @@ function renderShortlistTable() {
     }
   });
 
-  // Sort descending by pathway score
-  processedList.sort((a, b) => b.displayScore - a.displayScore);
+  // ── New search / filter-by-match / sort controls ──
+  const searchQ    = (document.getElementById("shortlist-search")?.value || "").toLowerCase().trim();
+  const filterMatch = document.getElementById("shortlist-filter-match")?.value || "All";
+  const sortMode    = document.getElementById("shortlist-sort")?.value || "score-desc";
+
+  // Apply search
+  if (searchQ) {
+    processedList = processedList.filter(c => c.name.toLowerCase().includes(searchQ));
+  }
+
+  // Apply match-level filter (based on display score)
+  if (filterMatch !== "All") {
+    processedList = processedList.filter(c => {
+      // compute quick display level for filtering
+      const aiConfPct = c.aiConfidence > 0 ? Math.round(c.aiConfidence * 100) : 0;
+      const ruleScore = c.displayScore || c.bestRuleScore || 0;
+      const ruleRole  = c.displayRole  || c.bestRuleRole  || "N/A";
+      const dec = computeDecisionEngine(c.aiPredicted || "Unknown", aiConfPct, ruleRole, ruleScore);
+      return getDisplayMatchLevel(getDisplayScore(dec.overall)) === filterMatch;
+    });
+  }
+
+  // Apply sort
+  switch (sortMode) {
+    case "score-asc":  processedList.sort((a, b) => a.displayScore - b.displayScore); break;
+    case "name-asc":   processedList.sort((a, b) => a.name.localeCompare(b.name));    break;
+    case "name-desc":  processedList.sort((a, b) => b.name.localeCompare(a.name));    break;
+    case "role":       processedList.sort((a, b) => (a.displayRole||'').localeCompare(b.displayRole||'')); break;
+    default:           processedList.sort((a, b) => b.displayScore - a.displayScore); // score-desc
+  }
 
   // If a specific role is filtered, we only show candidates who have a matching suitability > 0%
   if (filterRole !== "All") {
@@ -1447,39 +1706,34 @@ function renderShortlistTable() {
     return;
   }
 
+  // ── Build table rows with new display-score visualization ──
   tableBody.innerHTML = processedList
     .map((c, idx) => {
-      // Compute Decision Engine result from stored AI + Rule data
+      // Compute Decision Engine result
       const aiConfPct = c.aiConfidence > 0 ? Math.round(c.aiConfidence * 100) : 0;
       const ruleScore = c.displayScore || c.bestRuleScore || 0;
       const ruleRole  = c.displayRole  || c.bestRuleRole  || "N/A";
-      const decision  = computeDecisionEngine(
-        c.aiPredicted || "Unknown",
-        aiConfPct,
-        ruleRole,
-        ruleScore
-      );
+      const decision  = computeDecisionEngine(c.aiPredicted || "Unknown", aiConfPct, ruleRole, ruleScore);
 
-      let mlvlClass = "low-fit";
-      if (decision.matchLevel === "Excellent Match" || decision.matchLevel === "Strong Match") mlvlClass = "strong-fit";
-      else if (decision.matchLevel === "Moderate Match") mlvlClass = "moderate-fit";
+      // Attach for chart/summary use
+      c._overallForChart  = decision.overall;
+      c._finalRoleForChart = decision.finalRole;
 
+      // Frontend display score (never sent to backend)
+      const dispScore = getDisplayScore(decision.overall);
+      const dispLevel = getDisplayMatchLevel(dispScore);
+      const bdgClass  = getMatchBadgeClass(dispLevel);
+      const icon      = getMatchIcon(dispLevel);
       const originalIndex = hrShortlist.findIndex(item => item.name === c.name);
 
       return `
-        <tr>
+        <tr class="row-animate" style="animation-delay:${idx * 0.04}s">
           <td><strong>${escapeHtml(c.name)}</strong></td>
+          <td><strong style="font-size:0.88rem; color:#1e293b;">${escapeHtml(decision.finalRole)}</strong></td>
+          <td class="score-display-cell">${buildScoreCell(decision.overall)}</td>
+          <td><span class="match-badge ${bdgClass}">${icon} ${dispLevel}</span></td>
           <td>
-            <strong style="font-size:0.88rem; color:#1e293b;">${escapeHtml(decision.finalRole)}</strong>
-          </td>
-          <td>
-            <span class="badge-score font-mono">${decision.overall}%</span>
-          </td>
-          <td>
-            <span class="fit-tag ${mlvlClass}">${decision.matchLevel}</span>
-          </td>
-          <td>
-            <div style="display:flex; gap:0.5rem;">
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
               <button class="btn-table-action" onclick="loadShortlistCandidateByName('${escapeHtml(c.name)}')">Load Profiler</button>
               <button class="btn-table-action" style="color:#ef4444; border-color:#fca5a5; background-color:#fff5f5;" onclick="removeShortlistCandidate(${originalIndex})">
                 <i data-lucide="trash-2" style="width:12px; height:12px; display:inline-block; vertical-align:middle;"></i> Remove
@@ -1492,6 +1746,12 @@ function renderShortlistTable() {
     .join("");
 
   lucide.createIcons();
+  // Animate score cells after DOM update
+  setTimeout(() => {
+    animateScoreCells();
+    updateSummaryPanel(processedList);
+    refreshDashboardCharts(processedList);
+  }, 50);
 }
 
 window.loadShortlistCandidateByName = function(name) {
@@ -1649,6 +1909,12 @@ if (shortlistFilterRole) {
 loadShortlist();
 renderShortlistTable();
 
+// ── New search / filter / sort event listeners ──
+["shortlist-search", "shortlist-filter-match", "shortlist-sort"].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener("input", () => renderShortlistTable());
+});
+
 // ---------------------------------------------------------------------------
 // Clear All Batch Results Button
 // ---------------------------------------------------------------------------
@@ -1666,4 +1932,423 @@ if (clearBatchResultsBtn) {
 }
 
 
+// ==========================================================================
+// RESUME COMPARISON TOOL (UPLOAD-BASED)
+// Frontend only — parses uploaded files and calls predict-role API.
+// Never modifies dataset or backend.
+// ==========================================================================
+
+let compareCandidateDataA = null;
+let compareCandidateDataB = null;
+
+const compareZoneA = document.getElementById("compare-zone-a");
+const compareFileA = document.getElementById("compare-file-a");
+const compareStatusA = document.getElementById("compare-status-a");
+
+const compareZoneB = document.getElementById("compare-zone-b");
+const compareFileB = document.getElementById("compare-file-b");
+const compareStatusB = document.getElementById("compare-status-b");
+
+const compareUploadedBtn = document.getElementById("compare-uploaded-btn");
+const compareUploadedResults = document.getElementById("compare-uploaded-results");
+const compareTargetRole = document.getElementById("compare-target-role");
+
+// Setup drag and drop + click upload events for Zone A
+if (compareZoneA && compareFileA) {
+  compareZoneA.addEventListener("click", () => compareFileA.click());
+  compareZoneA.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    compareZoneA.classList.add("dragover");
+  });
+  compareZoneA.addEventListener("dragleave", () => compareZoneA.classList.remove("dragover"));
+  compareZoneA.addEventListener("drop", (e) => {
+    e.preventDefault();
+    compareZoneA.classList.remove("dragover");
+    if (e.dataTransfer.files.length > 0) {
+      handleCompareUpload(e.dataTransfer.files[0], 'A');
+    }
+  });
+  compareFileA.addEventListener("change", (e) => {
+    if (e.target.files.length > 0) {
+      handleCompareUpload(e.target.files[0], 'A');
+    }
+  });
+}
+
+// Setup drag and drop + click upload events for Zone B
+if (compareZoneB && compareFileB) {
+  compareZoneB.addEventListener("click", () => compareFileB.click());
+  compareZoneB.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    compareZoneB.classList.add("dragover");
+  });
+  compareZoneB.addEventListener("dragleave", () => compareZoneB.classList.remove("dragover"));
+  compareZoneB.addEventListener("drop", (e) => {
+    e.preventDefault();
+    compareZoneB.classList.remove("dragover");
+    if (e.dataTransfer.files.length > 0) {
+      handleCompareUpload(e.dataTransfer.files[0], 'B');
+    }
+  });
+  compareFileB.addEventListener("change", (e) => {
+    if (e.target.files.length > 0) {
+      handleCompareUpload(e.target.files[0], 'B');
+    }
+  });
+}
+
+/** Handles parsing and API calling for one comparison upload file */
+async function handleCompareUpload(file, side) {
+  const zone = side === 'A' ? compareZoneA : compareZoneB;
+  const statusEl = side === 'A' ? compareStatusA : compareStatusB;
+  const fileExt = file.name.split('.').pop().toLowerCase();
+
+  if (fileExt !== 'pdf' && fileExt !== 'txt') {
+    zone.className = "compare-upload-box error";
+    statusEl.innerHTML = `<span style="color:#ef4444;">Error: Only PDF/TXT allowed</span>`;
+    return;
+  }
+
+  zone.className = "compare-upload-box parsing-active";
+  statusEl.textContent = "Parsing resume...";
+
+  try {
+    const text = await readUploadedFileText(file, fileExt);
+    if (!text || text.trim().length === 0) {
+      zone.className = "compare-upload-box error";
+      statusEl.innerHTML = `<span style="color:#ef4444;">Error: Empty file</span>`;
+      return;
+    }
+
+    const parsed = parseResumeText(text);
+
+    // Call ML prediction API for this candidate (Engine 1)
+    let aiData = { predicted_role: "Offline/Unknown", confidence: 0 };
+    try {
+      const payload = {
+        education: parsed.education,
+        experience: parsed.experience,
+        projects: parsed.projects,
+        skills: parsed.skills,
+        certificates: parsed.certificates
+      };
+
+      const res = await fetchWithTimeout(`${API_BASE_URL}/api/predict-role`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        timeout: 5000
+      });
+      if (res.ok) {
+        aiData = await res.json();
+      }
+    } catch (err) {
+      console.warn(`Compare API prediction failed for side ${side}`, err);
+    }
+
+    const candidateData = {
+      name: parsed.name || file.name.split('.')[0],
+      fullProfile: parsed,
+      aiConfidence: aiData.confidence || 0,
+      aiPredicted: aiData.predicted_role || "Offline/Unknown"
+    };
+
+    if (side === 'A') {
+      compareCandidateDataA = candidateData;
+    } else {
+      compareCandidateDataB = candidateData;
+    }
+
+    zone.className = "compare-upload-box success";
+    statusEl.innerHTML = `
+      <div style="margin-bottom: 0.6rem;">Loaded: <strong style="color:#10b981;">${escapeHtml(candidateData.name)}</strong></div>
+      <div style="display:flex; justify-content:center; gap:0.5rem; flex-wrap:wrap; margin-top:0.5rem;">
+        <button class="btn-table-action" style="padding:0.25rem 0.6rem; font-size:0.75rem; color:#ef4444; border-color:#fca5a5; background-color:#fff5f5;" onclick="event.stopPropagation(); removeComparisonCandidate('${side}');">
+          <i data-lucide="trash-2" style="width:12px; height:12px; display:inline-block; vertical-align:middle; margin-right:2px;"></i> Remove
+        </button>
+      </div>
+    `;
+    lucide.createIcons();
+
+  } catch (err) {
+    console.error(`Error parsing compare file on side ${side}`, err);
+    zone.className = "compare-upload-box error";
+    statusEl.innerHTML = `<span style="color:#ef4444;">Error parsing file</span>`;
+  }
+}
+
+/** Triggers side-by-side comparison logic */
+function runUploadedComparison() {
+  const role = compareTargetRole.value;
+
+  if (!compareCandidateDataA || !compareCandidateDataB) {
+    compareUploadedResults.style.display = "block";
+    compareUploadedResults.innerHTML = `<div class="compare-error">⚠️ Please upload resumes for both Candidate A and Candidate B first.</div>`;
+    return;
+  }
+
+  function scoreCandidate(cand) {
+    const profile = cand.fullProfile || {};
+    const ruleMatches = calculateRuleBasedMatching(
+      profile.skills       || "",
+      profile.education    || "",
+      profile.experience   || "",
+      profile.projects     || "",
+      profile.certificates || ""
+    );
+
+    const roleMatch = ruleMatches.find(r => r.role === role)
+                   || { role, score: 0, category: "Low Fit" };
+
+    const aiConfPct = cand.aiConfidence > 0 ? Math.round(cand.aiConfidence * 100) : 0;
+    const decision  = computeDecisionEngine(
+      cand.aiPredicted || "Unknown",
+      aiConfPct,
+      roleMatch.role,
+      roleMatch.score
+    );
+
+    const dispScore = getDisplayScore(decision.overall);
+    const dispLevel = getDisplayMatchLevel(dispScore);
+
+    const requiredSkills = (ROLE_SKILLS_MATRIX[role]?.skills || []);
+    const candidateText  = (
+      (profile.skills || "") + " " +
+      (profile.projects || "") + " " +
+      (profile.certificates || "")
+    ).toLowerCase();
+
+    const matchedSkills = requiredSkills.filter(s => candidateText.includes(s));
+    const missingSkills = requiredSkills.filter(s => !candidateText.includes(s));
+
+    const improvements = [];
+    if (missingSkills.length > 0) {
+      improvements.push(`Learn: ${missingSkills.slice(0, 3).map(s => s.toUpperCase()).join(", ")}`);
+    }
+    if (roleMatch.score < 50) {
+      improvements.push("Build role-specific projects to strengthen the portfolio.");
+    }
+    if (!profile.certificates || profile.certificates.trim().length < 5) {
+      improvements.push("Earn a certification relevant to " + role + ".");
+    }
+    if (matchedSkills.length < requiredSkills.length / 2) {
+      improvements.push("Skill gap is significant — focus on core skills for this role.");
+    }
+    if (improvements.length === 0) {
+      improvements.push("Strong profile. Prepare for technical interview questions.");
+    }
+
+    return {
+      name: cand.name,
+      ruleScore: roleMatch.score,
+      aiConfPct,
+      decision,
+      dispScore,
+      dispLevel,
+      matchedSkills,
+      missingSkills,
+      improvements,
+      gradient: getProgressGradient(dispLevel),
+      badgeClass: getMatchBadgeClass(dispLevel),
+      icon: getMatchIcon(dispLevel)
+    };
+  }
+
+  const dataA = scoreCandidate(compareCandidateDataA);
+  const dataB = scoreCandidate(compareCandidateDataB);
+
+  let winnerClass, winnerText, winnerIcon;
+  if (dataA.dispScore > dataB.dispScore) {
+    winnerClass = "winner-a";
+    winnerText  = `${dataA.name} is the Better Fit for ${role}`;
+    winnerIcon  = "🏆";
+  } else if (dataB.dispScore > dataA.dispScore) {
+    winnerClass = "winner-b";
+    winnerText  = `${dataB.name} is the Better Fit for ${role}`;
+    winnerIcon  = "🏆";
+  } else {
+    winnerClass = "winner-tie";
+    winnerText  = `Both candidates are equally matched for ${role}`;
+    winnerIcon  = "🤝";
+  }
+
+  function buildCard(data, isWinner, side) {
+    const winnerCls = isWinner ? "is-winner" : "";
+    const matchedTags = data.matchedSkills
+      .map(s => `<span class="skill-tag-matched">✓ ${s}</span>`).join("");
+    const missingTags = data.missingSkills.slice(0, 5)
+      .map(s => `<span class="skill-tag-missing">✗ ${s}</span>`).join("");
+    const improvements = data.improvements
+      .map(i => `<li>${escapeHtml(i)}</li>`).join("");
+
+    return `
+      <div class="compare-card ${winnerCls}">
+        <div class="compare-card-name">${escapeHtml(data.name)}</div>
+        <div class="compare-card-subtitle">Target: ${escapeHtml(role)}</div>
+
+        <!-- Overall Display Score -->
+        <div class="compare-score-row">
+          <span class="compare-score-label">Overall</span>
+          <div class="compare-score-bar-wrap">
+            <div class="compare-score-bar-fill" data-fill="${data.dispScore}"
+              style="background:${data.gradient};"></div>
+          </div>
+          <span class="compare-score-num" data-target="${data.dispScore}">0%</span>
+        </div>
+
+        <!-- Rule-Based Score -->
+        <div class="compare-score-row">
+          <span class="compare-score-label">Rule Match</span>
+          <div class="compare-score-bar-wrap">
+            <div class="compare-score-bar-fill" data-fill="${data.ruleScore}"
+              style="background:linear-gradient(90deg,#0369a1,#38bdf8);"></div>
+          </div>
+          <span class="compare-score-num">${data.ruleScore}%</span>
+        </div>
+
+        <!-- AI Confidence -->
+        <div class="compare-score-row">
+          <span class="compare-score-label">AI Conf.</span>
+          <div class="compare-score-bar-wrap">
+            <div class="compare-score-bar-fill" data-fill="${data.aiConfPct}"
+              style="background:linear-gradient(90deg,#7c3aed,#a78bfa);"></div>
+          </div>
+          <span class="compare-score-num">${data.aiConfPct}%</span>
+        </div>
+
+        <!-- Match Level & Shortlist Option -->
+        <div style="margin-bottom:0.85rem; display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+          <span class="match-badge ${data.badgeClass}">${data.icon} ${data.dispLevel}</span>
+          <button class="btn-table-action" style="padding:0.3rem 0.75rem; font-size:0.75rem; color:#993445; border-color:#fecdd3; background-color:#fff1f2; display:inline-flex; align-items:center; gap:0.25rem; height:auto; line-height:1;" onclick="event.stopPropagation(); shortlistComparisonCandidate('${side}');">
+            <i data-lucide="user-plus" style="width:12px; height:12px;"></i> Shortlist
+          </button>
+        </div>
+
+        <!-- Matched Skills -->
+        <div class="compare-skill-section">
+          <h5>✅ Matched Skills (${data.matchedSkills.length}/${data.matchedSkills.length + data.missingSkills.length})</h5>
+          <div class="compare-skill-tags">
+            ${matchedTags || '<span style="font-size:0.72rem;color:#94a3b8;">None matched</span>'}
+          </div>
+          <h5>❌ Missing Skills</h5>
+          <div class="compare-skill-tags">
+            ${missingTags || '<span style="font-size:0.72rem;color:#00695C;">All required skills present!</span>'}
+          </div>
+        </div>
+
+        <!-- Improvement List -->
+        <div class="compare-improve-list">
+          <h5>🔧 What to Improve</h5>
+          <ul>${improvements}</ul>
+        </div>
+      </div>
+    `;
+  }
+
+  compareUploadedResults.style.display = "block";
+  compareUploadedResults.innerHTML = `
+    <!-- Winner Banner -->
+    <div class="compare-winner-banner ${winnerClass}">
+      <span class="compare-winner-icon">${winnerIcon}</span>
+      <span>${escapeHtml(winnerText)}</span>
+    </div>
+
+    <!-- Side-by-Side Cards -->
+    <div class="compare-cards">
+      ${buildCard(dataA, dataA.dispScore > dataB.dispScore, 'A')}
+      ${buildCard(dataB, dataB.dispScore > dataA.dispScore, 'B')}
+    </div>
+  `;
+
+  // Animate bars and score numbers
+  setTimeout(() => {
+    compareUploadedResults.querySelectorAll(".compare-score-bar-fill[data-fill]").forEach(el => {
+      el.style.width = el.dataset.fill + "%";
+    });
+    compareUploadedResults.querySelectorAll(".compare-score-num[data-target]").forEach(el => {
+      animateCountUp(el, parseInt(el.dataset.target), 1000);
+    });
+    lucide.createIcons();
+  }, 80);
+
+  // Scroll to results
+  compareUploadedResults.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// Wire up the button handler
+if (compareUploadedBtn) {
+  compareUploadedBtn.addEventListener("click", runUploadedComparison);
+}
+
+// ---------------------------------------------------------------------------
+// Resume Comparison Control Actions (Remove, Shortlist, Clear All)
+// ---------------------------------------------------------------------------
+
+window.removeComparisonCandidate = function(side) {
+  const zone = side === 'A' ? compareZoneA : compareZoneB;
+  const statusEl = side === 'A' ? compareStatusA : compareStatusB;
+  const fileInput = side === 'A' ? compareFileA : compareFileB;
+  
+  if (side === 'A') {
+    compareCandidateDataA = null;
+  } else {
+    compareCandidateDataB = null;
+  }
+  
+  fileInput.value = "";
+  zone.className = "compare-upload-box";
+  statusEl.innerHTML = "Drag & drop or click to upload (PDF/TXT)";
+  
+  // Hide results if we clear any candidate
+  compareUploadedResults.style.display = "none";
+};
+
+window.shortlistComparisonCandidate = function(side) {
+  const cand = side === 'A' ? compareCandidateDataA : compareCandidateDataB;
+  if (!cand) return;
+  
+  // Check if candidate already exists in shortlist to avoid duplicate entries
+  const exists = hrShortlist.some(c => c.name.toLowerCase() === cand.name.toLowerCase());
+  if (exists) {
+    alert(`${cand.name} is already in the HR Shortlist.`);
+    return;
+  }
+
+  // Calculate matching items based on their profile to populate shortlist properly
+  const profile = cand.fullProfile || {};
+  const ruleMatches = calculateRuleBasedMatching(
+    profile.skills       || "",
+    profile.education    || "",
+    profile.experience   || "",
+    profile.projects     || "",
+    profile.certificates || ""
+  );
+  
+  const bestRule = ruleMatches[0] || { role: "N/A", score: 0, category: "Low Fit" };
+
+  hrShortlist.push({
+    name: cand.name,
+    aiPredicted: cand.aiPredicted,
+    aiConfidence: cand.aiConfidence,
+    bestRuleRole: bestRule.role,
+    bestRuleScore: bestRule.score,
+    category: bestRule.category,
+    fullProfile: profile
+  });
+  
+  saveShortlist();
+  renderShortlistTable();
+  
+  alert(`${cand.name} successfully added to the HR Shortlist!`);
+};
+
+const compareClearAllBtn = document.getElementById("compare-clear-all-btn");
+if (compareClearAllBtn) {
+  compareClearAllBtn.addEventListener("click", () => {
+    removeComparisonCandidate('A');
+    removeComparisonCandidate('B');
+    compareUploadedResults.innerHTML = "";
+    compareUploadedResults.style.display = "none";
+  });
+}
 
