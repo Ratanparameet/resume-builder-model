@@ -35,10 +35,19 @@ import os
 import re
 import pickle
 import traceback
+from database import supabase
 
 import numpy as np
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
+
+# Import database services
+from services.candidate_service import save_candidate_pipeline
+from services.prediction_service import save_prediction
+from services.comparison_service import save_comparison, get_comparisons
+from services.feedback_service import save_feedback, get_feedback_by_candidate
+from services.shortlist_service import add_to_shortlist, remove_from_shortlist_by_candidate, get_shortlist_candidates
+from services.dashboard_service import get_dashboard_stats, get_candidates_list
 
 # ---------------------------------------------------------------------------
 # Flask app — point it at the frontend/ folder for templates and static files
@@ -177,17 +186,6 @@ def health():
 
 @app.route("/api/predict-role", methods=["POST"])
 def predict_role():
-    """
-    Body: {
-      "education": "B.TECH",
-      "experience": "Fresher",
-      "projects": "Rice Recommendation (Random Forest), Car Sales Dashboard",
-      "skills": "Python, SQL, Power BI",
-      "certificates": "Data Science & AI (IT Vedant)"
-    }
-
-    Returns: { "predicted_role": "Back-end Developer", "confidence": 0.62, ... }
-    """
     if LOAD_ERROR:
         return jsonify({"error": LOAD_ERROR}), 500
 
@@ -214,8 +212,7 @@ def predict_role():
 
         response = {"predicted_role": str(predicted_role)}
 
-        # LinearSVC has no predict_proba — approximate confidence via softmax
-        # over the decision-function margins instead.
+        # LinearSVC confidence approximation via softmax
         if hasattr(model, "decision_function"):
             scores = model.decision_function(features)[0]
             scores = np.atleast_1d(scores)
@@ -238,18 +235,145 @@ def predict_role():
                 {"role": str(r), "score": round(float(s), 4)} for r, s in ranked[:3]
             ]
 
-        # Run the Decision Engine to blend AI + rule-based scores
+        # Blending AI + rule-based scores
         ai_conf_pct = response.get("confidence", 0) * 100
-        rule_role = str(predicted_role)   # Rule engine uses same role as fallback
-        rule_score = 80.0                 # Default rule score (client-side engine sets real score)
+        rule_role = str(predicted_role)
+        rule_score = float(data.get("rule_score", 80.0))
         decision = decision_engine(str(predicted_role), ai_conf_pct, rule_role, rule_score)
         response.update(decision)
 
+        # ── Supabase Persistence Integration ──
+        cand_payload = {
+            "name": (data.get("name") or data.get("full_name") or "Unknown Candidate").strip(),
+            "education": (data.get("education") or "").strip(),
+            "experience": (data.get("experience") or "").strip(),
+            "projects": (data.get("projects") or "").strip(),
+            "skills": (data.get("skills") or "").strip(),
+            "certificates": (data.get("certificates") or "").strip()
+        }
+        
+        # Save Candidate Profile
+        cand_result = save_candidate_pipeline(
+            cand_payload,
+            filename=data.get("filename"),
+            file_size=data.get("file_size")
+        )
+        
+        if cand_result.get("success"):
+            candidate_id = cand_result.get("candidate_id")
+            response["candidate_id"] = candidate_id
+            
+            # Save Prediction details
+            save_prediction(
+                candidate_id=candidate_id,
+                confidence=response.get("confidence", 0.0),
+                overall_score=response.get("overall_score", 0.0),
+                match_level=response.get("match_level", "Moderate Match"),
+                explanation=response.get("explanation", "")
+            )
+        else:
+            print("Database candidate save warning:", cand_result.get("errors"))
+            
         return jsonify(response), 200
 
     except Exception:
         traceback.print_exc()
         return jsonify({"error": "Prediction failed", "detail": traceback.format_exc()}), 500
+
+
+# ── Shortlist Endpoints ──
+@app.route("/api/shortlist", methods=["GET"])
+def get_shortlist():
+    shortlist = get_shortlist_candidates()
+    return jsonify(shortlist), 200
+
+
+@app.route("/api/shortlist", methods=["POST"])
+def add_shortlist_route():
+    data = request.get_json(silent=True) or {}
+    candidate_id = data.get("candidate_id")
+    
+    if not candidate_id:
+        # If candidate ID is not supplied, we attempt to save the candidate details first
+        cand_res = save_candidate_pipeline(data)
+        if not cand_res.get("success"):
+            return jsonify({"error": cand_res.get("errors")}), 400
+        candidate_id = cand_res.get("candidate_id")
+        
+    try:
+        res = add_to_shortlist(candidate_id)
+        return jsonify(res), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/shortlist/<candidate_id>", methods=["DELETE"])
+def remove_shortlist_route(candidate_id):
+    try:
+        res = remove_from_shortlist_by_candidate(candidate_id)
+        return jsonify(res), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Comparison Endpoints ──
+@app.route("/api/compare", methods=["POST"])
+def save_comparison_route():
+    data = request.get_json(silent=True) or {}
+    c1_id = data.get("candidate1_id")
+    c2_id = data.get("candidate2_id")
+    winner_id = data.get("winner_id")
+    target_role = data.get("target_role")
+    
+    if not c1_id or not c2_id:
+        return jsonify({"error": "candidate1_id and candidate2_id are required"}), 400
+        
+    try:
+        res = save_comparison(c1_id, c2_id, winner_id, target_role)
+        return jsonify(res), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/comparisons", methods=["GET"])
+def list_comparisons():
+    history = get_comparisons()
+    return jsonify(history), 200
+
+
+# ── Feedback Endpoints ──
+@app.route("/api/feedback", methods=["POST"])
+def add_feedback_route():
+    data = request.get_json(silent=True) or {}
+    c_id = data.get("candidate_id")
+    rating = data.get("rating")
+    remarks = data.get("remarks")
+    
+    if not c_id or rating is None:
+        return jsonify({"error": "candidate_id and rating are required"}), 400
+        
+    try:
+        res = save_feedback(c_id, rating, remarks)
+        return jsonify(res), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/feedback/<candidate_id>", methods=["GET"])
+def get_feedback_route(candidate_id):
+    history = get_feedback_by_candidate(candidate_id)
+    return jsonify(history), 200
+
+
+# ── Dashboard Endpoint ──
+@app.route("/api/dashboard", methods=["GET"])
+def get_dashboard_data():
+    stats = get_dashboard_stats()
+    candidates = get_candidates_list(request.args.get("search"))
+    return jsonify({
+        "stats": stats,
+        "candidates": candidates
+    }), 200
 
 
 if __name__ == "__main__":

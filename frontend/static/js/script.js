@@ -373,10 +373,15 @@ form.addEventListener("submit", async (e) => {
   try {
     // Run concurrent calculations
     // 1. AI/ML Prediction
+    const payloadWithName = {
+      ...payload,
+      name: candidateName || "Unknown Candidate"
+    };
+
     const res = await fetchWithTimeout(`${API_BASE_URL}/api/predict-role`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payloadWithName),
       timeout: 5000
     });
     
@@ -561,11 +566,14 @@ async function handleUploadedFiles(files) {
       let aiData = { predicted_role: "Offline/Unknown", confidence: 0, top_roles: [] };
       try {
         const payload = {
+          name: parsed.name || file.name.split('.')[0],
           education: parsed.education,
           experience: parsed.experience,
           projects: parsed.projects,
           skills: parsed.skills,
-          certificates: parsed.certificates
+          certificates: parsed.certificates,
+          filename: file.name,
+          file_size: file.size
         };
 
         const res = await fetchWithTimeout(`${API_BASE_URL}/api/predict-role`, {
@@ -1299,11 +1307,14 @@ async function handleBatchFiles(files) {
       let aiResult = { predicted_role: "Offline/Unknown", confidence: 0 };
       try {
         const payload = {
+          name: parsed.name || file.name.split('.')[0],
           education: parsed.education,
           experience: parsed.experience,
           projects: parsed.projects,
           skills: parsed.skills,
-          certificates: parsed.certificates
+          certificates: parsed.certificates,
+          filename: file.name,
+          file_size: file.size
         };
 
         const res = await fetchWithTimeout(`${API_BASE_URL}/api/predict-role`, {
@@ -1317,6 +1328,7 @@ async function handleBatchFiles(files) {
           const aiData = await res.json();
           aiResult.predicted_role = aiData.predicted_role;
           aiResult.confidence = aiData.confidence;
+          aiResult.candidate_id = aiData.candidate_id;
         }
       } catch (err) {
         console.warn("AI/ML prediction failed in batch for candidate, fallback applied.", err);
@@ -1597,19 +1609,24 @@ const DEFAULT_SHORTLIST = [
 
 let hrShortlist = [];
 
-function loadShortlist() {
-  const stored = localStorage.getItem("rareinfoway_hr_shortlist");
-  if (stored) {
-    try {
+async function loadShortlist() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/shortlist`);
+    if (res.ok) {
+      hrShortlist = await res.json();
+    } else {
+      throw new Error("Shortlist fetch failed");
+    }
+  } catch (err) {
+    console.warn("Failed to fetch shortlist from database, using localStorage fallback.", err);
+    const stored = localStorage.getItem("rareinfoway_hr_shortlist");
+    if (stored) {
       hrShortlist = JSON.parse(stored);
-    } catch (e) {
-      console.error("Failed to load shortlist, resetting.", e);
+    } else {
       hrShortlist = [...DEFAULT_SHORTLIST];
     }
-  } else {
-    hrShortlist = [...DEFAULT_SHORTLIST];
-    saveShortlist();
   }
+  renderShortlistTable();
 }
 
 function saveShortlist() {
@@ -1804,7 +1821,19 @@ window.loadShortlistCandidate = function(idx) {
   }, 100);
 };
 
-window.removeShortlistCandidate = function(idx) {
+window.removeShortlistCandidate = async function(idx) {
+  const c = hrShortlist[idx];
+  if (!c) return;
+
+  if (c.id || (c.fullProfile && c.fullProfile.id)) {
+    const cid = c.id || c.fullProfile.id;
+    try {
+      await fetch(`${API_BASE_URL}/api/shortlist/${cid}`, { method: "DELETE" });
+    } catch (err) {
+      console.warn("Failed to delete shortlist from Supabase:", err);
+    }
+  }
+
   if (hrShortlist[idx]) {
     hrShortlist.splice(idx, 1);
     saveShortlist();
@@ -1822,18 +1851,51 @@ window.shortlistBatchCandidate = function(idx) {
     return;
   }
 
-  hrShortlist.push({
+  const profile = c.fullProfile || {};
+  const shortlistPayload = {
+    ...profile,
     name: c.name,
-    aiPredicted: c.aiPredicted,
-    aiConfidence: c.aiConfidence,
-    bestRuleRole: batchTargetRole.value, // Target pathway
-    bestRuleScore: c.score,
-    category: c.category,
-    fullProfile: c.fullProfile
-  });
+    candidate_id: c.candidate_id || null
+  };
 
-  saveShortlist();
-  renderShortlistTable();
+  fetch(`${API_BASE_URL}/api/shortlist`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(shortlistPayload)
+  }).then(res => res.json()).then(dbRes => {
+    let dbId = c.candidate_id;
+    if (dbRes.success && dbRes.data) {
+      dbId = dbRes.data.candidate_id;
+    }
+    hrShortlist.push({
+      id: dbId,
+      name: c.name,
+      aiPredicted: c.aiPredicted,
+      aiConfidence: c.aiConfidence,
+      bestRuleRole: batchTargetRole.value, // Target pathway
+      bestRuleScore: c.score,
+      category: c.category,
+      fullProfile: {
+        ...profile,
+        id: dbId
+      }
+    });
+    saveShortlist();
+    renderShortlistTable();
+  }).catch(err => {
+    console.warn("Failed to save to database shortlist:", err);
+    hrShortlist.push({
+      name: c.name,
+      aiPredicted: c.aiPredicted,
+      aiConfidence: c.aiConfidence,
+      bestRuleRole: batchTargetRole.value,
+      bestRuleScore: c.score,
+      category: c.category,
+      fullProfile: profile
+    });
+    saveShortlist();
+    renderShortlistTable();
+  });
 
   // Update button state visually
   const btn = document.getElementById(`batch-shortlist-btn-${idx}`);
@@ -1865,24 +1927,55 @@ if (addToShortlistBtn) {
     
     const bestRule = currentlyAnalyzedCandidate.ruleData[0] || { role: "N/A", score: 0, category: "Low Fit" };
     
-    hrShortlist.push({
+    const candidateId = currentlyAnalyzedCandidate.aiData ? currentlyAnalyzedCandidate.aiData.candidate_id : null;
+    const shortlistPayload = {
       name: currentlyAnalyzedCandidate.name,
-      aiPredicted: currentlyAnalyzedCandidate.aiData.predicted_role,
-      aiConfidence: currentlyAnalyzedCandidate.aiData.confidence,
-      bestRuleRole: bestRule.role,
-      bestRuleScore: bestRule.score,
-      category: bestRule.category,
-      fullProfile: {
-        education: currentlyAnalyzedCandidate.education,
-        experience: currentlyAnalyzedCandidate.experience,
-        skills: currentlyAnalyzedCandidate.skills,
-        projects: currentlyAnalyzedCandidate.projects,
-        certificates: currentlyAnalyzedCandidate.certificates
+      education: currentlyAnalyzedCandidate.education,
+      experience: currentlyAnalyzedCandidate.experience,
+      skills: currentlyAnalyzedCandidate.skills,
+      projects: currentlyAnalyzedCandidate.projects,
+      certificates: currentlyAnalyzedCandidate.certificates,
+      candidate_id: candidateId
+    };
+
+    fetch(`${API_BASE_URL}/api/shortlist`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(shortlistPayload)
+    }).then(res => res.json()).then(dbRes => {
+      let dbId = candidateId;
+      if (dbRes.success && dbRes.data) {
+        dbId = dbRes.data.candidate_id;
       }
+      hrShortlist.push({
+        id: dbId,
+        name: currentlyAnalyzedCandidate.name,
+        aiPredicted: currentlyAnalyzedCandidate.aiData.predicted_role,
+        aiConfidence: currentlyAnalyzedCandidate.aiData.confidence,
+        bestRuleRole: bestRule.role,
+        bestRuleScore: bestRule.score,
+        category: bestRule.category,
+        fullProfile: {
+          ...shortlistPayload,
+          id: dbId
+        }
+      });
+      saveShortlist();
+      renderShortlistTable();
+    }).catch(err => {
+      console.warn("Failed to add to database shortlist:", err);
+      hrShortlist.push({
+        name: currentlyAnalyzedCandidate.name,
+        aiPredicted: currentlyAnalyzedCandidate.aiData.predicted_role,
+        aiConfidence: currentlyAnalyzedCandidate.aiData.confidence,
+        bestRuleRole: bestRule.role,
+        bestRuleScore: bestRule.score,
+        category: bestRule.category,
+        fullProfile: shortlistPayload
+      });
+      saveShortlist();
+      renderShortlistTable();
     });
-    
-    saveShortlist();
-    renderShortlistTable();
     
     // Change state visually
     addToShortlistBtn.innerHTML = `<i data-lucide="check"></i> Shortlisted!`;
@@ -2026,11 +2119,14 @@ async function handleCompareUpload(file, side) {
     let aiData = { predicted_role: "Offline/Unknown", confidence: 0 };
     try {
       const payload = {
+        name: parsed.name || file.name.split('.')[0],
         education: parsed.education,
         experience: parsed.experience,
         projects: parsed.projects,
         skills: parsed.skills,
-        certificates: parsed.certificates
+        certificates: parsed.certificates,
+        filename: file.name,
+        file_size: file.size
       };
 
       const res = await fetchWithTimeout(`${API_BASE_URL}/api/predict-role`, {
@@ -2050,7 +2146,8 @@ async function handleCompareUpload(file, side) {
       name: parsed.name || file.name.split('.')[0],
       fullProfile: parsed,
       aiConfidence: aiData.confidence || 0,
-      aiPredicted: aiData.predicted_role || "Offline/Unknown"
+      aiPredicted: aiData.predicted_role || "Offline/Unknown",
+      aiData: aiData
     };
 
     if (side === 'A') {
@@ -2259,6 +2356,23 @@ function runUploadedComparison() {
       ${buildCard(dataB, dataB.dispScore > dataA.dispScore, 'B')}
     </div>
   `;
+
+  const compPayload = {
+    candidate1_id: compareCandidateDataA.aiData ? compareCandidateDataA.aiData.candidate_id : null,
+    candidate2_id: compareCandidateDataB.aiData ? compareCandidateDataB.aiData.candidate_id : null,
+    winner_id: dataA.dispScore > dataB.dispScore ? (compareCandidateDataA.aiData ? compareCandidateDataA.aiData.candidate_id : null) :
+               (dataB.dispScore > dataA.dispScore ? (compareCandidateDataB.aiData ? compareCandidateDataB.aiData.candidate_id : null) : null),
+    target_role: role
+  };
+  if (compPayload.candidate1_id && compPayload.candidate2_id) {
+    fetch(`${API_BASE_URL}/api/compare`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(compPayload)
+    }).catch(err => console.warn("Failed to save comparison to database:", err));
+  } else {
+    console.warn("Could not save comparison: one or both candidate database IDs are missing. Please verify that your Supabase RLS policies permit inserts on the 'candidates' and 'predications' tables.", compPayload);
+  }
 
   // Animate bars and score numbers
   setTimeout(() => {
